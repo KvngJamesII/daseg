@@ -266,13 +266,20 @@ const Pricing = () => {
     if (!user) { navigate('/auth?redirect=/pricing'); return; }
     setPurchasing(plan.id);
     try {
+      // Look up the real UUID for this plan from the DB (plans.id is a UUID, not the slug)
+      const { data: planRow } = await supabase
+        .from('plans')
+        .select('id')
+        .ilike('name', plan.name)
+        .maybeSingle();
+
       const { data, error } = await supabase.functions.invoke('paystack', {
         body: {
           action: 'initialize',
           email: user.email,
           amount: plan.priceKobo,
           user_id: user.id,
-          plan_id: plan.id,
+          plan_id: planRow?.id ?? null,
           callback_url: `${window.location.origin}/pricing`,
           panels_count: 1,
           duration_months: 1,
