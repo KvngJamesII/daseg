@@ -51,9 +51,8 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
 
   const bodyRef        = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLInputElement>(null);
-  // When we exec a piped command we suppress live PM2 log fetches for a
-  // window so the PM2-restarted process doesn't re-echo the same output.
   const suppressUntil  = useRef<number>(0);
+  const prevStatus     = useRef<string>('');
 
   const push = (kind: Line['kind'], text: string) =>
     setLines(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, kind, text, ts: Date.now() }]);
@@ -116,8 +115,22 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
 
   useEffect(() => {
     if (panelStatus === 'running') {
-      fetchLogs();
+      const wasRunning = prevStatus.current === 'running';
+      prevStatus.current = 'running';
+
+      // On every transition INTO running (fresh start or restart):
+      // clear display + wipe server-side PM2 logs so old output doesn't bleed in
+      if (!wasRunning) {
+        setLines([]);
+        suppressUntil.current = 0;
+        vmApi.clearLogs(panelId).catch(() => {});
+        // Give PM2 ~2 s to flush new output before fetching
+        setTimeout(fetchLogs, 2000);
+      } else {
+        fetchLogs();
+      }
     } else {
+      prevStatus.current = panelStatus;
       setLines(prev => {
         const sysLines = prev.filter(l => l.kind === 'sys' || l.kind === 'info');
         return [...sysLines, { id: 'idle', kind: 'sys', text: '[SYSTEM] Panel is not running. Press Start to launch your app.', ts: Date.now() }];
