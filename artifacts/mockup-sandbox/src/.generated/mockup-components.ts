@@ -7,5 +7,9 @@ export const modules: ModuleMap = {
   "./components/mockups/dashboard-variants/VariantA.tsx": () => import("../components/mockups/dashboard-variants/VariantA.tsx"),
   "./components/mockups/dashboard-variants/VariantB.tsx": () => import("../components/mockups/dashboard-variants/VariantB.tsx"),
   "./components/mockups/dashboard-variants/VariantC.tsx": () => import("../components/mockups/dashboard-variants/VariantC.tsx"),
-  "./components/mockups/dashboard-variants/VariantD.tsx": () => import("../components/mockups/dashboard-variants/VariantD.tsx")
+  "./components/mockups/dashboard-variants/VariantD.tsx": () => import("../components/mockups/dashboard-variants/VariantD.tsx"),
+  "./components/mockups/themes/ThemeBlue.tsx": () => import("../components/mockups/themes/ThemeBlue.tsx"),
+  "./components/mockups/themes/ThemeLight.tsx": () => import("../components/mockups/themes/ThemeLight.tsx"),
+  "./components/mockups/themes/ThemeOrange.tsx": () => import("../components/mockups/themes/ThemeOrange.tsx"),
+  "./components/mockups/themes/ThemePurple.tsx": () => import("../components/mockups/themes/ThemePurple.tsx")
 };
