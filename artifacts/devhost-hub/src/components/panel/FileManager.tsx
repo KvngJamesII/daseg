@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { vmApi, FileEntry } from '@/lib/vmApi';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -10,52 +10,174 @@ import {
 interface PFile { name: string; path: string; type: 'file' | 'directory'; size: number | null; }
 interface FileManagerProps { panelId: string; }
 
-/* ── Extension → icon config ─────────────────────────────── */
-type IconCfg = { label: string; color: string; dot: string };
-const EXT: Record<string, IconCfg> = {
-  py:   { label: 'PY',   color: '#4584b6', dot: '#ffde57' },
-  js:   { label: 'JS',   color: '#f7df1e', dot: '#323330' },
-  ts:   { label: 'TS',   color: '#fff',    dot: '#3178c6' },
-  jsx:  { label: 'JSX',  color: '#61dafb', dot: '#20232a' },
-  tsx:  { label: 'TSX',  color: '#61dafb', dot: '#20232a' },
-  json: { label: 'JSON', color: '#c4b5fd', dot: '#1e1b4b' },
-  html: { label: 'HTML', color: '#fff',    dot: '#e34c26' },
-  css:  { label: 'CSS',  color: '#fff',    dot: '#264de4' },
-  scss: { label: 'SCSS', color: '#fff',    dot: '#cc6699' },
-  md:   { label: 'MD',   color: '#e2e8f0', dot: '#2d3748' },
-  sh:   { label: 'SH',   color: '#000',    dot: '#3fb950' },
-  env:  { label: 'ENV',  color: '#000',    dot: '#f0b429' },
-  yml:  { label: 'YML',  color: '#fff',    dot: '#cb171e' },
-  yaml: { label: 'YAML', color: '#fff',    dot: '#cb171e' },
-  sql:  { label: 'SQL',  color: '#fff',    dot: '#00b0ff' },
-  txt:  { label: 'TXT',  color: '#8b949e', dot: '#21262d' },
-  toml: { label: 'TOML', color: '#9b9b9b', dot: '#21262d' },
-  lock: { label: 'LOCK', color: '#f0b429', dot: '#21262d' },
-  ini:  { label: 'INI',  color: '#8b949e', dot: '#21262d' },
-  log:  { label: 'LOG',  color: '#3fb950', dot: '#0d2b0d' },
-};
-
 const langName: Record<string, string> = {
   py: 'Python', js: 'JavaScript', ts: 'TypeScript', jsx: 'JSX', tsx: 'TSX',
   json: 'JSON', html: 'HTML', css: 'CSS', scss: 'SCSS', md: 'Markdown',
   sh: 'Shell', env: 'Env', yml: 'YAML', yaml: 'YAML', sql: 'SQL', txt: 'Plain Text',
 };
 
-function FileIcon({ name, size = 20 }: { name: string; size?: number }) {
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  const cfg = EXT[ext];
-  const fs = size <= 20 ? 7 : 9;
-  if (!cfg) return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="#484f58" strokeWidth="1.5" fill="#21262d" />
-      <path d="M14 2v6h6" stroke="#484f58" strokeWidth="1.5" />
+/* ── Editor tab language badge config (still used in editor bar) ── */
+type IconCfg = { color: string; dot: string };
+const EXT: Record<string, IconCfg> = {
+  py:   { color: '#4584b6', dot: '#ffde57' },
+  js:   { color: '#f7df1e', dot: '#323330' },
+  ts:   { color: '#fff',    dot: '#3178c6' },
+  jsx:  { color: '#61dafb', dot: '#20232a' },
+  tsx:  { color: '#61dafb', dot: '#20232a' },
+  json: { color: '#c4b5fd', dot: '#1e1b4b' },
+  html: { color: '#fff',    dot: '#e34c26' },
+  css:  { color: '#fff',    dot: '#264de4' },
+  scss: { color: '#fff',    dot: '#cc6699' },
+  md:   { color: '#e2e8f0', dot: '#2d3748' },
+  sh:   { color: '#000',    dot: '#3fb950' },
+  env:  { color: '#000',    dot: '#f0b429' },
+  yml:  { color: '#fff',    dot: '#cb171e' },
+  yaml: { color: '#fff',    dot: '#cb171e' },
+  sql:  { color: '#fff',    dot: '#00b0ff' },
+  txt:  { color: '#8b949e', dot: '#21262d' },
+  toml: { color: '#9b9b9b', dot: '#21262d' },
+  lock: { color: '#f0b429', dot: '#21262d' },
+  ini:  { color: '#8b949e', dot: '#21262d' },
+  log:  { color: '#3fb950', dot: '#0d2b0d' },
+};
+
+/* ── SVG file-type document icons ─────────────────────── */
+function Doc({ bg, fold, size, children }: { bg: string; fold: string; size: number; children?: React.ReactNode }) {
+  return (
+    <svg width={size} height={Math.round(size * 1.2)} viewBox="0 0 20 24" fill="none" style={{ flexShrink: 0 }}>
+      <path d="M2 3C2 1.9 2.9 1 4 1H13L18 6V21C18 22.1 17.1 23 16 23H4C2.9 23 2 22.1 2 21V3Z" fill={bg} />
+      <path d="M13 1L18 6H14C13.45 6 13 5.55 13 5V1Z" fill={fold} />
+      {children}
     </svg>
   );
-  return (
-    <div style={{ width: size, height: size, borderRadius: 3, background: cfg.dot, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <span style={{ fontSize: fs, fontWeight: 900, fontFamily: 'monospace', color: cfg.color, letterSpacing: -0.5, lineHeight: 1 }}>{cfg.label}</span>
-    </div>
-  );
+}
+
+function FileIcon({ name, size = 20 }: { name: string; size?: number }) {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'py': return (
+      <Doc bg="#2b5b84" fold="#1a3a54" size={size}>
+        <ellipse cx="8.5" cy="13.5" rx="3.5" ry="2.2" fill="#ffde57" opacity="0.9" />
+        <ellipse cx="11.5" cy="16.5" rx="3.5" ry="2.2" fill="#4584b6" opacity="0.9" />
+        <circle cx="7.5" cy="13" r="0.9" fill="#2b5b84" />
+        <circle cx="12.5" cy="17" r="0.9" fill="#ffde57" />
+      </Doc>
+    );
+    case 'js': return (
+      <Doc bg="#2a2700" fold="#1a1800" size={size}>
+        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#f7df1e" />
+        <text x="7.5" y="18.5" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#323330">JS</text>
+      </Doc>
+    );
+    case 'ts': return (
+      <Doc bg="#0d1f36" fold="#061426" size={size}>
+        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#3178c6" />
+        <text x="7.5" y="18.5" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#fff">TS</text>
+      </Doc>
+    );
+    case 'jsx': return (
+      <Doc bg="#20232a" fold="#111316" size={size}>
+        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#61dafb" />
+        <text x="5.5" y="18.5" fontSize="5.5" fontWeight="900" fontFamily="monospace" fill="#20232a">JSX</text>
+      </Doc>
+    );
+    case 'tsx': return (
+      <Doc bg="#1a2035" fold="#0f1322" size={size}>
+        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#61dafb" />
+        <text x="5.5" y="18.5" fontSize="5.5" fontWeight="900" fontFamily="monospace" fill="#20232a">TSX</text>
+      </Doc>
+    );
+    case 'json': return (
+      <Doc bg="#1e1b4b" fold="#13103a" size={size}>
+        <text x="5" y="17.5" fontSize="9" fontWeight="900" fontFamily="monospace" fill="#c4b5fd">&#123;&#125;</text>
+      </Doc>
+    );
+    case 'html': return (
+      <Doc bg="#7a2a14" fold="#551e0e" size={size}>
+        <text x="5.5" y="17.5" fontSize="8" fontWeight="900" fontFamily="monospace" fill="#ff7852">&lt;/&gt;</text>
+      </Doc>
+    );
+    case 'css': return (
+      <Doc bg="#0e1f6e" fold="#091354" size={size}>
+        <rect x="5" y="11" width="10" height="2" rx="1" fill="#4b6ef5" />
+        <rect x="5" y="14" width="8" height="2" rx="1" fill="#7c9cff" />
+        <rect x="5" y="17" width="5" height="2" rx="1" fill="#a8c0ff" />
+      </Doc>
+    );
+    case 'scss': return (
+      <Doc bg="#3d1a2e" fold="#2a1020" size={size}>
+        <text x="6" y="18" fontSize="10" fontWeight="900" fontFamily="monospace" fill="#cc6699">S</text>
+      </Doc>
+    );
+    case 'md': return (
+      <Doc bg="#2d3748" fold="#1a212e" size={size}>
+        <text x="4.5" y="16" fontSize="7" fontWeight="900" fontFamily="monospace" fill="#e2e8f0">M</text>
+        <path d="M13 13 L13 18 L11 16 M13 18 L15 16" stroke="#e2e8f0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </Doc>
+    );
+    case 'sh': return (
+      <Doc bg="#0d2b0d" fold="#071a07" size={size}>
+        <text x="4.5" y="17.5" fontSize="8" fontWeight="900" fontFamily="monospace" fill="#3fb950">$_</text>
+      </Doc>
+    );
+    case 'env': return (
+      <Doc bg="#2d2000" fold="#1a1200" size={size}>
+        <text x="4.5" y="17" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#f0b429">.env</text>
+      </Doc>
+    );
+    case 'yml':
+    case 'yaml': return (
+      <Doc bg="#3a0a0a" fold="#250707" size={size}>
+        <text x="6.5" y="17.5" fontSize="9" fontWeight="900" fontFamily="monospace" fill="#cb171e">Y</text>
+      </Doc>
+    );
+    case 'sql': return (
+      <Doc bg="#002540" fold="#001528" size={size}>
+        <ellipse cx="10" cy="12" rx="4.5" ry="1.5" fill="#00b0ff" opacity="0.8" />
+        <rect x="5.5" y="12" width="9" height="5" fill="#0080bb" />
+        <ellipse cx="10" cy="17" rx="4.5" ry="1.5" fill="#00b0ff" />
+      </Doc>
+    );
+    case 'txt': return (
+      <Doc bg="#1c2128" fold="#10151c" size={size}>
+        <rect x="5" y="11" width="10" height="1.5" rx="0.75" fill="#8b949e" />
+        <rect x="5" y="14" width="8" height="1.5" rx="0.75" fill="#8b949e" opacity="0.7" />
+        <rect x="5" y="17" width="6" height="1.5" rx="0.75" fill="#8b949e" opacity="0.5" />
+      </Doc>
+    );
+    case 'toml':
+    case 'ini': return (
+      <Doc bg="#1c2128" fold="#10151c" size={size}>
+        <rect x="5" y="11" width="10" height="1.5" rx="0.75" fill="#9b9b9b" />
+        <rect x="5" y="14.5" width="4" height="1.5" rx="0.75" fill="#f0b429" />
+        <rect x="10" y="14.5" width="5" height="1.5" rx="0.75" fill="#9b9b9b" opacity="0.7" />
+        <rect x="5" y="18" width="7" height="1.5" rx="0.75" fill="#9b9b9b" opacity="0.5" />
+      </Doc>
+    );
+    case 'lock': return (
+      <Doc bg="#1c2128" fold="#10151c" size={size}>
+        <rect x="7" y="14" width="6" height="5" rx="1" fill="#f0b429" />
+        <path d="M8.5 14V12.5C8.5 11.4 11.5 11.4 11.5 12.5V14" stroke="#f0b429" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="10" cy="16.5" r="1" fill="#1c2128" />
+      </Doc>
+    );
+    case 'log': return (
+      <Doc bg="#0d2b0d" fold="#071a07" size={size}>
+        <rect x="5" y="11" width="10" height="1.5" rx="0.75" fill="#3fb950" />
+        <rect x="5" y="14" width="7" height="1.5" rx="0.75" fill="#3fb950" opacity="0.7" />
+        <rect x="5" y="17" width="9" height="1.5" rx="0.75" fill="#3fb950" opacity="0.5" />
+      </Doc>
+    );
+    default: return (
+      <svg width={size} height={Math.round(size * 1.2)} viewBox="0 0 20 24" fill="none" style={{ flexShrink: 0 }}>
+        <path d="M2 3C2 1.9 2.9 1 4 1H13L18 6V21C18 22.1 17.1 23 16 23H4C2.9 23 2 22.1 2 21V3Z" fill="#21262d" stroke="#484f58" strokeWidth="0.5" />
+        <path d="M13 1L18 6H14C13.45 6 13 5.55 13 5V1Z" fill="#30363d" />
+        <rect x="5" y="11" width="10" height="1.2" rx="0.6" fill="#484f58" />
+        <rect x="5" y="14" width="8" height="1.2" rx="0.6" fill="#484f58" opacity="0.7" />
+        <rect x="5" y="17" width="6" height="1.2" rx="0.6" fill="#484f58" opacity="0.5" />
+      </svg>
+    );
+  }
 }
 
 function DirIcon({ open, size = 20 }: { open?: boolean; size?: number }) {

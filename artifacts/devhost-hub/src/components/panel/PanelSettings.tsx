@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Trash2, AlertTriangle } from 'lucide-react';
 
 interface Panel {
   id: string;
@@ -19,44 +19,27 @@ interface Panel {
 interface PanelSettingsProps {
   panel: Panel;
   onUpdate: () => void;
+  onDeleteRequest: () => void;
 }
 
-export function PanelSettings({ panel, onUpdate }: PanelSettingsProps) {
+export function PanelSettings({ panel, onUpdate, onDeleteRequest }: PanelSettingsProps) {
   const [name, setName] = useState(panel.name);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
   const handleSave = async () => {
     if (!name.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Name is required',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Name is required', variant: 'destructive' });
       return;
     }
-
     setSaving(true);
-
-    const { error } = await supabase
-      .from('panels')
-      .update({ name: name.trim() })
-      .eq('id', panel.id);
-
+    const { error } = await supabase.from('panels').update({ name: name.trim() }).eq('id', panel.id);
     if (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to update settings',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to update settings', variant: 'destructive' });
     } else {
-      toast({
-        title: 'Saved',
-        description: 'Settings updated successfully',
-      });
+      toast({ title: 'Saved', description: 'Settings updated successfully' });
       onUpdate();
     }
-
     setSaving(false);
   };
 
@@ -80,23 +63,13 @@ export function PanelSettings({ panel, onUpdate }: PanelSettingsProps) {
 
           <div className="space-y-2">
             <Label>Language</Label>
-            <Input
-              value={panel.language === 'nodejs' ? 'Node.js' : 'Python'}
-              disabled
-              className="bg-muted"
-            />
-            <p className="text-xs text-muted-foreground">
-              Language cannot be changed after creation
-            </p>
+            <Input value={panel.language === 'nodejs' ? 'Node.js' : 'Python'} disabled className="bg-muted" />
+            <p className="text-xs text-muted-foreground">Language cannot be changed after creation</p>
           </div>
 
           <div className="space-y-2">
             <Label>Created At</Label>
-            <Input
-              value={new Date(panel.created_at).toLocaleString()}
-              disabled
-              className="bg-muted"
-            />
+            <Input value={new Date(panel.created_at).toLocaleString()} disabled className="bg-muted" />
           </div>
 
           {panel.expires_at && (
@@ -122,14 +95,42 @@ export function PanelSettings({ panel, onUpdate }: PanelSettingsProps) {
           </div>
 
           <Button onClick={handleSave} disabled={saving} className="w-full">
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save Changes
-              </>
-            )}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4 mr-2" />Save Changes</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Danger Zone ── */}
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive" />
+            <CardTitle className="text-destructive">Danger Zone</CardTitle>
+          </div>
+          <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Warning box */}
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-2">
+            <p className="text-sm font-semibold text-destructive flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              Deleting this panel is permanent
+            </p>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>All files, logs, and data will be erased forever</li>
+              <li>The panel slot is also removed — you will <span className="font-semibold text-foreground">not</span> get a free slot to create a new panel</li>
+              <li>To get a new panel you must purchase one from the pricing page</li>
+              <li>There is no way to recover this panel after deletion</li>
+            </ul>
+          </div>
+
+          <Button
+            variant="destructive"
+            className="w-full"
+            onClick={onDeleteRequest}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete Panel Forever
           </Button>
         </CardContent>
       </Card>

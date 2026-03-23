@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   Play,
   Square,
-  Trash2,
   Loader2,
   FolderOpen,
   Terminal,
@@ -95,6 +94,13 @@ const PanelPage = () => {
     if (id && user) fetchPanel();
   }, [id, user]);
 
+  const decrementPanelSlot = async () => {
+    const { data: prof } = await supabase.from('profiles').select('panels_limit').eq('id', user?.id).single();
+    if (prof && prof.panels_limit > 0) {
+      await supabase.from('profiles').update({ panels_limit: prof.panels_limit - 1 }).eq('id', user?.id);
+    }
+  };
+
   const fetchPanel = async () => {
     const { data, error } = await supabase
       .from('panels')
@@ -108,13 +114,14 @@ const PanelPage = () => {
       navigate('/dashboard');
     } else {
       const p = data as Panel;
-      // Auto-delete if expired > 7 days ago
+      // Auto-delete if expired > 7 days ago — also burns the slot
       if (p.expires_at) {
         const expiresAt = new Date(p.expires_at).getTime();
         const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
         if (expiresAt < sevenDaysAgo) {
           try { await vmApi.delete(p.id); } catch { }
           await supabase.from('panels').delete().eq('id', p.id);
+          await decrementPanelSlot();
           toast({ title: 'Panel Removed', description: `"${p.name}" expired over 7 days ago and has been automatically deleted.`, variant: 'destructive' });
           navigate('/dashboard');
           return;
@@ -236,7 +243,9 @@ const PanelPage = () => {
     if (error) {
       toast({ title: 'Error', description: 'Failed to delete panel', variant: 'destructive' });
     } else {
-      toast({ title: 'Deleted', description: 'Panel deleted' });
+      // Burn the slot — deleting a panel does NOT free up a new one
+      await decrementPanelSlot();
+      toast({ title: 'Panel deleted', description: 'The panel and its slot have been permanently removed.' });
       navigate('/dashboard');
     }
   };
@@ -392,15 +401,6 @@ const PanelPage = () => {
             Stop
           </Button>
 
-          {/* Delete */}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setShowDeleteDialog(true)}
-            className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
         </div>
       </div>
 
@@ -495,7 +495,7 @@ const PanelPage = () => {
           <StartupSettings panel={panel} onUpdate={fetchPanel} />
         </TabsContent>
         <TabsContent value="settings" className="flex-1 m-0 overflow-y-auto">
-          <PanelSettings panel={panel} onUpdate={fetchPanel} />
+          <PanelSettings panel={panel} onUpdate={fetchPanel} onDeleteRequest={() => setShowDeleteDialog(true)} />
         </TabsContent>
       </Tabs>
 
