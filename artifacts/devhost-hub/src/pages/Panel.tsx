@@ -7,11 +7,10 @@ import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, Play, Square, Loader2, FolderOpen, Terminal,
   Settings, AlertCircle, RefreshCw, Cpu, MemoryStick, Clock,
-  RotateCcw, ShoppingCart, Maximize2, Minimize2, SquareTerminal,
+  RotateCcw, ShoppingCart, Maximize2, Minimize2,
 } from 'lucide-react';
 import { FileManager } from '@/components/panel/FileManager';
 import { UnifiedConsole } from '@/components/panel/UnifiedConsole';
-import { InteractiveTerminal } from '@/components/panel/InteractiveTerminal';
 import { StartupSettings } from '@/components/panel/StartupSettings';
 import { PanelSettings } from '@/components/panel/PanelSettings';
 import { RenewalWarning } from '@/components/panel/RenewalWarning';
@@ -93,7 +92,7 @@ const PanelPage = () => {
   const [showStopDialog, setSD]       = useState(false);
   const [liveUptime, setLiveUptime]   = useState(0);
   const [consoleExpanded, setCE]      = useState(false);
-  const [activeTab, setActiveTab]     = useState<'console'|'files'|'terminal'|'startup'|'settings'>('console');
+  const [activeTab, setActiveTab]     = useState<'console'|'files'|'startup'|'settings'>('console');
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -250,11 +249,10 @@ const PanelPage = () => {
   }[effectiveStatus] ?? { color: '#555', glow: 'none', label: 'Unknown', pulse: false };
 
   const TABS = [
-    { id: 'console',  Icon: Terminal,        label: 'Logs'     },
-    { id: 'terminal', Icon: SquareTerminal,  label: 'Terminal' },
-    { id: 'files',    Icon: FolderOpen,      label: 'Files'    },
-    { id: 'startup',  Icon: Play,            label: 'Startup'  },
-    { id: 'settings', Icon: Settings,        label: 'Settings' },
+    { id: 'console',  Icon: Terminal,   label: 'Logs'     },
+    { id: 'files',    Icon: FolderOpen, label: 'Files'    },
+    { id: 'startup',  Icon: Play,       label: 'Startup'  },
+    { id: 'settings', Icon: Settings,   label: 'Settings' },
   ] as const;
 
   return (
@@ -277,7 +275,12 @@ const PanelPage = () => {
             </button>
           </div>
           <div style={{ flex: 1, overflow: 'hidden' }}>
-            <UnifiedConsole panelId={panel.id} panelStatus={effectiveStatus} />
+            <UnifiedConsole
+              panelId={panel.id}
+              panelStatus={effectiveStatus}
+              entryPoint={panel.entry_point || (panel.language === 'python' ? 'main.py' : 'index.js')}
+              language={panel.language}
+            />
           </div>
         </div>
       )}
@@ -403,7 +406,12 @@ const PanelPage = () => {
         {/* Console tab — console output + metric cards below */}
         {activeTab === 'console' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <UnifiedConsole panelId={panel.id} panelStatus={effectiveStatus} />
+            <UnifiedConsole
+              panelId={panel.id}
+              panelStatus={effectiveStatus}
+              entryPoint={panel.entry_point || (panel.language === 'python' ? 'main.py' : 'index.js')}
+              language={panel.language}
+            />
 
             {/* Metric cards — only when running, inside the console tab */}
             {vmStatus && isRunning && (
@@ -429,14 +437,6 @@ const PanelPage = () => {
           </div>
         )}
 
-        {activeTab === 'terminal' && (
-          <InteractiveTerminal
-            panelId={panel.id}
-            isRunning={isRunning}
-            onStart={handleStart}
-            actionLoading={actionLoading}
-          />
-        )}
         {activeTab === 'files' && <FileManager panelId={panel.id} />}
         {activeTab === 'startup' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>

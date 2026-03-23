@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { vmApi } from '@/lib/vmApi';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, ChevronDown, Pause, Play } from 'lucide-react';
+import { Loader2, ChevronDown, Pause, Play, ArrowRight } from 'lucide-react';
 
 interface UnifiedConsoleProps {
   panelId: string;
   panelStatus: string;
+  entryPoint?: string;
+  language?: 'nodejs' | 'python';
 }
 
 interface Line {
@@ -33,7 +35,7 @@ const lineColor = (k: Line['kind']) => ({
   info: '#60a5fa',
 }[k] ?? '#d1d5db');
 
-export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
+export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', language = 'python' }: UnifiedConsoleProps) {
   const [lines, setLines]         = useState<Line[]>([]);
   const [input, setInput]         = useState('');
   const [running, setRunning]     = useState(false);
@@ -43,6 +45,10 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
   const [histIdx, setHistIdx]     = useState(-1);
   const [histBuf, setHistBuf]     = useState('');
   const [atBottom, setAtBottom]   = useState(true);
+  const [stdinMode, setStdinMode] = useState(false);
+
+  const isRunning = panelStatus === 'running';
+  const runner = language === 'python' ? 'python' : 'node';
 
   const bodyRef  = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -133,7 +139,7 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
   };
 
-  /* ── Command execution ── */
+  /* ── Command / stdin execution ── */
   const exec = async (cmd: string) => {
     const trimmed = cmd.trim();
     if (!trimmed) return;
@@ -141,39 +147,44 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
     setHistory(h => [trimmed, ...h.slice(0, 99)]);
     setHistIdx(-1);
     setHistBuf('');
-
-    push('cmd', `$ ${trimmed}`);
     setInput('');
     setAtBottom(true);
 
+    /* ── Stdin mode: pipe to entry point ── */
+    if (stdinMode) {
+      const escaped = trimmed.replace(/'/g, "'\\''");
+      const pipedCmd = `printf '%s\n' '${escaped}' | ${runner} ${entryPoint}`;
+      push('info', `→ stdin "${trimmed}" → ${runner} ${entryPoint}`);
+      setRunning(true);
+      try {
+        const res = await vmApi.exec(panelId, pipedCmd);
+        const combined = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
+        if (combined) combined.split('\n').forEach(l => { if (l.trim()) push(res.stderr && !res.stdout ? 'err' : 'out', l); });
+        else push('out', '(no output)');
+      } catch (e: any) {
+        const msg = e.message || '';
+        if (msg.includes('non-2xx') || msg.includes('Edge Function')) push('err', 'Piped command failed — check your script name in Startup settings.');
+        else push('err', `Error: ${msg}`);
+      }
+      setRunning(false);
+      return;
+    }
+
+    /* ── Shell command mode ── */
     if (trimmed === 'clear') { setLines([]); return; }
     if (trimmed === 'help') {
-      push('out', 'Shell commands: ls, cat, pip install <pkg>, python main.py, clear');
-      push('out', 'Note: this terminal runs NEW commands — it does not send input to your running app.');
-      push('out', 'To test interactive scripts, pipe the input:  echo "2" | python main.py');
+      push('out', `Commands: ls, cat ${entryPoint}, pip install <pkg>, ${runner} --version, clear`);
+      push('info', `Toggle "→ stdin" to pipe your answer directly to ${runner} ${entryPoint}`);
       return;
     }
 
-    /* Detect likely "app input" mistake while panel is running */
-    const looksLikeData = panelStatus === 'running' && /^[\w\s.,!?-]+$/.test(trimmed) && !/\s/.test(trimmed.replace(/^[\d.]+$/, ''));
-    if (looksLikeData && /^\d+(\.\d+)?$/.test(trimmed)) {
-      push('err', `"${trimmed}" looks like data, not a shell command.`);
-      push('sys', 'This terminal runs shell commands, not stdin to your app.');
-      push('sys', `To pass input to your script:  echo "${trimmed}" | python main.py`);
-      return;
-    }
-
+    push('cmd', `$ ${trimmed}`);
     setRunning(true);
     try {
       const res = await vmApi.exec(panelId, trimmed);
       const combined = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
-      if (combined) {
-        combined.split('\n').forEach(line => {
-          if (line.trim()) push(res.stderr && !res.stdout ? 'err' : 'out', line);
-        });
-      } else {
-        push('out', '(no output)');
-      }
+      if (combined) combined.split('\n').forEach(l => { if (l.trim()) push(res.stderr && !res.stdout ? 'err' : 'out', l); });
+      else push('out', '(no output)');
     } catch (e: any) {
       const msg = e.message || '';
       if (msg.includes('non-2xx') || msg.includes('Edge Function')) {
@@ -234,6 +245,17 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
           {loading && <Loader2 style={{ width: 11, height: 11, color: '#58a6ff', animation: 'spin 1s linear infinite' }} />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Stdin mode toggle — only when running */}
+          {isRunning && (
+            <button
+              onClick={e => { e.stopPropagation(); setStdinMode(s => !s); }}
+              title={stdinMode ? 'Switch to shell mode' : `Pipe input to ${runner} ${entryPoint}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 5, border: `1px solid ${stdinMode ? '#f0a726' : '#30363d'}`, background: stdinMode ? 'rgba(240,167,38,0.12)' : 'transparent', color: stdinMode ? '#f0a726' : '#8b949e', fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}
+            >
+              <ArrowRight style={{ width: 9, height: 9 }} />
+              {stdinMode ? 'stdin' : '→ stdin'}
+            </button>
+          )}
           <button
             onClick={e => { e.stopPropagation(); setLive(!live); }}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 5, border: `1px solid ${live ? '#238636' : '#30363d'}`, background: live ? 'rgba(35,134,54,0.12)' : 'transparent', color: live ? '#3fb950' : '#8b949e', fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}
@@ -290,32 +312,28 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
         </button>
       )}
 
-      {/* Shell-not-stdin notice — only shown while panel is running */}
-      {panelStatus === 'running' && (
-        <div style={{ flexShrink: 0, padding: '5px 12px', background: 'rgba(96,165,250,0.06)', borderTop: '1px solid rgba(96,165,250,0.12)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 10, color: '#60a5fa', fontFamily: 'monospace' }}>ℹ</span>
-          <span style={{ fontSize: 10.5, color: '#60a5fa', opacity: 0.8 }}>
-            Shell terminal — runs commands, not app stdin. To test input:&nbsp;
-            <code style={{ background: 'rgba(96,165,250,0.12)', borderRadius: 3, padding: '0 4px', fontSize: 10 }}>echo "answer" | python main.py</code>
-          </span>
-        </div>
-      )}
-
-      {/* Input */}
+      {/* Input row */}
       <div style={{ flexShrink: 0, borderTop: '1px solid #21262d', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8, background: '#161b22' }}>
-        <span style={{ color: '#3fb950', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>$</span>
+        <span style={{ color: stdinMode ? '#f0a726' : '#3fb950', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+          {stdinMode ? '→' : '$'}
+        </span>
         <input
           ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={running ? '' : panelStatus === 'running' ? 'shell command (ls, cat, pip install…)' : 'type a command…'}
+          placeholder={
+            running ? '' :
+            stdinMode ? `type your answer… (pipes to ${runner} ${entryPoint})` :
+            isRunning ? 'shell command — or click → stdin to send app input' :
+            'type a command…'
+          }
           disabled={running}
           autoComplete="off"
           spellCheck={false}
-          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#e6edf3', fontFamily: 'inherit', caretColor: '#3fb950' }}
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#e6edf3', fontFamily: 'inherit', caretColor: stdinMode ? '#f0a726' : '#3fb950' }}
         />
-        {running && <Loader2 style={{ width: 13, height: 13, color: '#3fb950', flexShrink: 0, animation: 'spin 1s linear infinite' }} />}
+        {running && <Loader2 style={{ width: 13, height: 13, color: stdinMode ? '#f0a726' : '#3fb950', flexShrink: 0, animation: 'spin 1s linear infinite' }} />}
       </div>
     </div>
   );
