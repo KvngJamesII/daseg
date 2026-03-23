@@ -48,7 +48,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
   const [stdinMode, setStdinMode] = useState(false);
 
   const isRunning = panelStatus === 'running';
-  const runner = language === 'python' ? 'python' : 'node';
+  const runner = language === 'python' ? 'python3' : 'node';
 
   const bodyRef  = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -150,22 +150,43 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
     setInput('');
     setAtBottom(true);
 
-    /* ── Stdin mode: pipe to entry point ── */
+    /* ── Stdin mode: pipe input to script ── */
     if (stdinMode) {
-      const escaped = trimmed.replace(/'/g, "'\\''");
-      const pipedCmd = `printf '%s\n' '${escaped}' | ${runner} ${entryPoint}`;
-      push('info', `→ stdin "${trimmed}" → ${runner} ${entryPoint}`);
       setRunning(true);
-      try {
-        const res = await vmApi.exec(panelId, pipedCmd);
-        const combined = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
-        if (combined) combined.split('\n').forEach(l => { if (l.trim()) push(res.stderr && !res.stdout ? 'err' : 'out', l); });
-        else push('out', '(no output)');
-      } catch (e: any) {
-        const msg = e.message || '';
-        if (msg.includes('non-2xx') || msg.includes('Edge Function')) push('err', 'Piped command failed — check your script name in Startup settings.');
-        else push('err', `Error: ${msg}`);
+      // Try python3 first, then python
+      const escapedInput = trimmed.replace(/"/g, '\\"');
+      const runners = language === 'python' ? ['python3', 'python'] : ['node'];
+      let succeeded = false;
+
+      for (const r of runners) {
+        const pipedCmd = `echo "${escapedInput}" | ${r} ${entryPoint}`;
+        push('info', `→ ${pipedCmd}`);
+        try {
+          const res = await vmApi.exec(panelId, pipedCmd);
+          const out = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
+          if (out) out.split('\n').forEach(l => { if (l.trim()) push(res.stderr && !res.stdout ? 'err' : 'out', l); });
+          else push('out', '(no output)');
+          succeeded = true;
+          break;
+        } catch {
+          // try next runner
+        }
       }
+
+      if (!succeeded) {
+        // Both failed — try running the script without piped stdin as a sanity check
+        push('err', 'Pipe failed. Trying without stdin…');
+        try {
+          const res = await vmApi.exec(panelId, `${runners[0]} ${entryPoint}`);
+          const out = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
+          if (out) out.split('\n').forEach(l => push('out', l));
+          push('sys', 'Script ran but stdin piping is not supported by this server.');
+        } catch {
+          push('err', `Script not found or not runnable: ${entryPoint}`);
+          push('sys', 'Check the entry point in Startup settings.');
+        }
+      }
+
       setRunning(false);
       return;
     }
