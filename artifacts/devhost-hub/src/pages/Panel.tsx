@@ -437,10 +437,44 @@ const PanelPage = () => {
                 {formatUptime(liveUptime)}
               </span>
             </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-muted/50">
-              <RotateCcw className="w-4 h-4 text-primary mb-1" />
+            <div className={`flex flex-col items-center p-2 rounded-lg ${
+              (vmStatus as any).restarts_recent_3h > 7 ? 'bg-warning/15 border border-warning/30' : 'bg-muted/50'
+            }`}>
+              <RotateCcw className={`w-4 h-4 mb-1 ${(vmStatus as any).restarts_recent_3h > 7 ? 'text-warning' : 'text-primary'}`} />
               <span className="text-xs text-muted-foreground">Restarts</span>
-              <span className="text-sm font-semibold">{vmStatus.restarts ?? 0}</span>
+              <span className={`text-sm font-semibold ${(vmStatus as any).restarts_recent_3h > 7 ? 'text-warning' : ''}`}>
+                {vmStatus.restarts ?? 0}
+              </span>
+            </div>
+          </div>
+          {/* Restart limit warning */}
+          {(vmStatus as any).restarts_recent_3h > 7 && (
+            <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/30">
+              <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <p className="text-warning font-semibold">High restart rate detected</p>
+                <p className="text-muted-foreground">
+                  {(vmStatus as any).restarts_recent_3h}/10 restarts in the last 3 hours.
+                  At 10 restarts the panel will be automatically stopped.
+                  Consider upgrading your plan or optimizing your app.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Panel stopped due to restart limit */}
+      {effectiveStatus === 'stopped' && (vmStatus as any)?.restart_limit_hit && (
+        <div className="px-4 py-3 border-b border-border">
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30">
+            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="text-destructive font-semibold">Panel auto-stopped</p>
+              <p className="text-muted-foreground">
+                This panel exceeded 10 restarts in 3 hours and was automatically stopped to protect the server.
+                Please review your app's code or consider upgrading to a higher-RAM plan.
+              </p>
             </div>
           </div>
         </div>

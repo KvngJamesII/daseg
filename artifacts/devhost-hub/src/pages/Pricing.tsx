@@ -3,7 +3,8 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import {
   Terminal,
@@ -11,23 +12,45 @@ import {
   Check,
   Loader2,
   MessageCircle,
-  Minus,
-  Plus,
   Server,
-  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Shield,
+  MemoryStick,
+  Cpu,
+  HardDrive,
 } from 'lucide-react';
 
-interface PriceConfig {
-  id: string;
-  price: number; // price per panel per month in kobo
+const BASE_PRICE_KOBO = 140000; // ₦1,400 in kobo
+const RAM_STEP = 128; // MB
+const RAM_MIN = 500;
+const RAM_MAX = 2048;
+const CPU_OPTIONS = [0.25, 0.5, 1, 2];
+
+function ramToExtraKobo(ramMb: number): number {
+  const extraRam = Math.max(0, ramMb - 500);
+  const extraSlabs = Math.floor(extraRam / 128);
+  return extraSlabs * 20000; // ₦200 per extra 128MB slab
+}
+
+function formatPrice(kobo: number) {
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 0,
+  }).format(kobo / 100);
 }
 
 const Pricing = () => {
   const { user, loading: authLoading } = useAuth();
-  const [priceConfig, setPriceConfig] = useState<PriceConfig | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
-  const [panelCount, setPanelCount] = useState(1);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [panelName, setPanelName] = useState('');
+  const [stack, setStack] = useState<'nodejs' | 'python'>('nodejs');
+  const [ramMb, setRamMb] = useState(500);
+  const [cpuCores, setCpuCores] = useState(0.5);
   const [months, setMonths] = useState(1);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -40,134 +63,72 @@ const Pricing = () => {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    fetchPriceConfig();
-  }, []);
-
-  // Check for payment callback
-  useEffect(() => {
     const reference = searchParams.get('reference');
     const trxref = searchParams.get('trxref');
-    
     if (reference || trxref) {
       verifyPayment(reference || trxref!);
     }
   }, [searchParams]);
 
-  const fetchPriceConfig = async () => {
-    // Get the first active plan which holds our price per panel per month
-    const { data, error } = await supabase
-      .from('plans')
-      .select('id, price')
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true })
-      .limit(1)
-      .single();
-
-    if (error) {
-      console.error('Error fetching price config:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load pricing',
-        variant: 'destructive',
-      });
-    } else {
-      setPriceConfig(data as PriceConfig);
-    }
-    setLoading(false);
-  };
+  const totalKobo = (BASE_PRICE_KOBO + ramToExtraKobo(ramMb)) * months;
 
   const verifyPayment = async (reference: string) => {
     setPurchasing(true);
-    
     try {
       const { data, error } = await supabase.functions.invoke('paystack', {
         body: { action: 'verify', reference },
       });
-
       if (error) throw error;
-
       if (data.success && data.status === 'success') {
-        toast({
-          title: 'Payment Successful! 🎉',
-          description: data.message || 'Your panels have been created',
-        });
-        // Clear URL params and redirect to dashboard
+        toast({ title: 'Payment Successful!', description: data.message || 'Your panel has been created' });
         navigate('/dashboard', { replace: true });
       } else {
-        toast({
-          title: 'Payment Failed',
-          description: data.message || 'Payment was not successful',
-          variant: 'destructive',
-        });
-        // Clear URL params
+        toast({ title: 'Payment Failed', description: data.message || 'Payment was not successful', variant: 'destructive' });
         navigate('/pricing', { replace: true });
       }
     } catch (error: any) {
-      console.error('Payment verification error:', error);
-      toast({
-        title: 'Verification Error',
-        description: error.message || 'Could not verify payment',
-        variant: 'destructive',
-      });
+      toast({ title: 'Verification Error', description: error.message || 'Could not verify payment', variant: 'destructive' });
       navigate('/pricing', { replace: true });
     }
-    
     setPurchasing(false);
   };
 
   const handlePurchase = async () => {
-    if (!user || !priceConfig) {
-      navigate('/auth?redirect=/pricing');
+    if (!user) { navigate('/auth?redirect=/pricing'); return; }
+    if (showAdvanced && !panelName.trim()) {
+      toast({ title: 'Panel name required', description: 'Please enter a name for your panel', variant: 'destructive' });
       return;
     }
 
     setPurchasing(true);
-
     try {
-      const totalAmount = priceConfig.price * panelCount * months;
       const callback_url = `${window.location.origin}/pricing`;
-
       const { data, error } = await supabase.functions.invoke('paystack', {
         body: {
           action: 'initialize',
           email: user.email,
-          amount: totalAmount,
-          plan_id: priceConfig.id,
+          amount: totalKobo,
           user_id: user.id,
           callback_url,
-          panels_count: panelCount,
+          panels_count: 1,
           duration_months: months,
+          panel_name: showAdvanced ? panelName.trim() : undefined,
+          panel_language: showAdvanced ? stack : undefined,
+          panel_ram_mb: showAdvanced ? ramMb : 500,
+          panel_cpu_cores: showAdvanced ? cpuCores : 0.5,
         },
       });
-
       if (error) throw error;
-
       if (data.success && data.authorization_url) {
-        // Redirect to Paystack checkout
         window.location.href = data.authorization_url;
       } else {
         throw new Error(data.error || 'Failed to initialize payment');
       }
     } catch (error: any) {
-      console.error('Purchase error:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to initiate payment',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error.message || 'Failed to initiate payment', variant: 'destructive' });
       setPurchasing(false);
     }
   };
-
-  const formatPrice = (priceInKobo: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(priceInKobo / 100);
-  };
-
-  const totalAmount = priceConfig ? priceConfig.price * panelCount * months : 0;
 
   if (authLoading || loading) {
     return (
@@ -191,283 +152,286 @@ const Pricing = () => {
     );
   }
 
+  const ramPercent = ((ramMb - RAM_MIN) / (RAM_MAX - RAM_MIN)) * 100;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-border">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link to="/dashboard">
-              <Button variant="ghost" size="icon" className="h-9 w-9">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-            </Link>
-            <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-              <Terminal className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="font-mono font-bold text-lg text-foreground">Buy Panels</h1>
-              <p className="text-xs text-muted-foreground font-mono">
-                Get hosting panels for your apps
-              </p>
-            </div>
+        <div className="px-4 py-3 flex items-center gap-3">
+          <Link to="/dashboard">
+            <Button variant="ghost" size="icon" className="h-9 w-9">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          </Link>
+          <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+            <Terminal className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="font-mono font-bold text-lg text-foreground">Buy a Panel</h1>
+            <p className="text-xs text-muted-foreground font-mono">Instant activation · Paystack secured</p>
           </div>
         </div>
       </header>
 
-      <main className="p-4 pb-24 max-w-lg mx-auto">
-        {/* Hero Section */}
-        <div className="text-center mb-6 mt-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-primary/30 bg-primary/5 font-mono text-sm text-primary mb-4">
+      <main className="p-4 pb-28 max-w-lg mx-auto space-y-4">
+        {/* Badge */}
+        <div className="text-center pt-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5 font-mono text-xs text-primary">
             <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
             Secure Payments via Paystack
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            Simple, Transparent Pricing
-          </h2>
-          <p className="text-muted-foreground">
-            Pay only for what you need. No hidden fees.
-          </p>
         </div>
 
-        {priceConfig && (
-          <>
-            {/* Panel Count Selector */}
-            <Card className="mb-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-mono flex items-center gap-2">
-                  <Server className="w-4 h-4" />
-                  Number of Panels
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  How many hosting panels do you need?
-                </p>
+        {/* Basic Plan Card */}
+        <div className="rounded-2xl border border-primary/40 bg-card overflow-hidden">
+          {/* Card Header */}
+          <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-5 py-4 border-b border-primary/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-mono font-bold text-lg text-foreground">Basic Plan</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Perfect for personal projects & bots</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-mono font-bold text-primary">{formatPrice(totalKobo)}</p>
+                <p className="text-xs text-muted-foreground">/{months === 1 ? 'month' : `${months} months`}</p>
+              </div>
+            </div>
+          </div>
 
-                <div className="flex items-center justify-center gap-4 mb-4">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setPanelCount(Math.max(1, panelCount - 1))}
-                    disabled={panelCount <= 1}
-                  >
-                    <Minus className="w-4 h-4" />
-                  </Button>
-                  
-                  <div className="text-center min-w-[100px]">
-                    <span className="text-4xl font-mono font-bold text-foreground">
-                      {panelCount}
-                    </span>
-                    <p className="text-sm text-muted-foreground">
-                      panel{panelCount > 1 ? 's' : ''}
-                    </p>
-                  </div>
+          {/* Specs */}
+          <div className="px-5 py-4 grid grid-cols-3 gap-3 border-b border-border">
+            <div className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/40">
+              <MemoryStick className="w-4 h-4 text-primary" />
+              <p className="text-xs text-muted-foreground font-mono">RAM</p>
+              <p className="text-sm font-mono font-bold text-foreground">{ramMb}MB</p>
+            </div>
+            <div className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/40">
+              <Cpu className="w-4 h-4 text-primary" />
+              <p className="text-xs text-muted-foreground font-mono">CPU</p>
+              <p className="text-sm font-mono font-bold text-foreground">{cpuCores} core{cpuCores !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="flex flex-col items-center gap-1 p-3 rounded-xl bg-muted/40">
+              <HardDrive className="w-4 h-4 text-primary" />
+              <p className="text-xs text-muted-foreground font-mono">Storage</p>
+              <p className="text-sm font-mono font-bold text-foreground">1 GB</p>
+            </div>
+          </div>
 
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setPanelCount(Math.min(10, panelCount + 1))}
-                    disabled={panelCount >= 10}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
+          {/* Includes */}
+          <div className="px-5 py-4 space-y-2 border-b border-border">
+            {[
+              'Node.js & Python support',
+              'Auto-restart on crash',
+              '24/7 uptime monitoring',
+              'Web file manager',
+              'Console / log viewer',
+              'Instant activation',
+            ].map((f) => (
+              <div key={f} className="flex items-center gap-2 text-sm">
+                <Check className="w-4 h-4 text-primary shrink-0" />
+                <span>{f}</span>
+              </div>
+            ))}
+          </div>
 
-                {/* Quick Select for Panels */}
-                <div className="flex gap-2 justify-center flex-wrap">
-                  {[1, 2, 3, 5, 10].map((p) => (
-                    <Button
-                      key={p}
-                      variant={panelCount === p ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPanelCount(p)}
-                      className="font-mono"
-                    >
-                      {p}
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+          {/* Duration */}
+          <div className="px-5 py-4 border-b border-border">
+            <p className="text-xs font-mono text-muted-foreground uppercase mb-3">Duration</p>
+            <div className="flex gap-2">
+              {[1, 3, 6, 12].map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMonths(m)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-mono transition-all ${
+                    months === m
+                      ? 'border-primary bg-primary/10 text-primary font-bold'
+                      : 'border-border text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  {m}mo
+                </button>
+              ))}
+            </div>
+          </div>
 
-            {/* Duration Selector */}
-            <Card className="mb-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-mono flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Duration
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  How long do you want to host?
-                </p>
-
-                <div className="flex items-center justify-center gap-4 mb-4">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setMonths(Math.max(1, months - 1))}
-                    disabled={months <= 1}
-                  >
-                    <Minus className="w-4 h-4" />
-                  </Button>
-                  
-                  <div className="text-center min-w-[100px]">
-                    <span className="text-4xl font-mono font-bold text-foreground">
-                      {months}
-                    </span>
-                    <p className="text-sm text-muted-foreground">
-                      month{months > 1 ? 's' : ''}
-                    </p>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setMonths(Math.min(12, months + 1))}
-                    disabled={months >= 12}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                {/* Quick Select for Months */}
-                <div className="flex gap-2 justify-center flex-wrap">
-                  {[1, 3, 6, 12].map((m) => (
-                    <Button
-                      key={m}
-                      variant={months === m ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setMonths(m)}
-                      className="font-mono"
-                    >
-                      {m} mo
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Price Summary */}
-            <Card className="mb-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-mono">Price Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="p-4 rounded-lg bg-muted/50 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Price per panel/month</span>
-                    <span className="font-mono">{formatPrice(priceConfig.price)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Panels</span>
-                    <span className="font-mono">× {panelCount}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Duration</span>
-                    <span className="font-mono">× {months} month{months > 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="h-px bg-border my-2" />
-                  <div className="flex justify-between">
-                    <span className="font-medium">Total</span>
-                    <span className="text-2xl font-mono font-bold text-primary">
-                      {formatPrice(totalAmount)}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* What You Get */}
-            <Card className="mb-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-mono">What you get</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-success" />
-                  <span>{panelCount} hosting panel{panelCount > 1 ? 's' : ''}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-success" />
-                  <span>{months} month{months > 1 ? 's' : ''} validity</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-success" />
-                  <span>Node.js & Python support</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-success" />
-                  <span>24/7 uptime hosting</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-success" />
-                  <span>Instant activation</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Purchase Button */}
+          {/* Buy Button */}
+          <div className="px-5 py-4">
             <Button
-              className="w-full h-12 font-mono text-lg bg-gradient-primary hover:opacity-90"
+              className="w-full h-12 font-mono text-base bg-gradient-primary hover:opacity-90"
               onClick={handlePurchase}
               disabled={purchasing}
             >
               {purchasing ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Processing...
-                </>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
               ) : (
-                <>
-                  Pay {formatPrice(totalAmount)}
-                </>
+                <><Zap className="w-4 h-4 mr-2" />Pay {formatPrice(totalKobo)}</>
               )}
             </Button>
-
-            <p className="text-xs text-center text-muted-foreground mt-4">
-              Secure payment via Paystack (Bank Transfer)
+            <p className="text-xs text-center text-muted-foreground mt-2">
+              By paying you agree to our{' '}
+              <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
+              {' '}including the No Refund Policy.
             </p>
-          </>
-        )}
-
-        {/* Trust indicators */}
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center gap-4 px-4 py-2 rounded-xl bg-card border border-border text-xs flex-wrap justify-center">
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Check className="w-3 h-3 text-success" />
-              <span>Instant Activation</span>
-            </div>
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Check className="w-3 h-3 text-success" />
-              <span>Secure Payment</span>
-            </div>
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Check className="w-3 h-3 text-success" />
-              <span>24/7 Support</span>
-            </div>
           </div>
         </div>
 
+        {/* Advanced Options Toggle */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+          >
+            <div className="flex items-center gap-3">
+              <Server className="w-5 h-5 text-muted-foreground" />
+              <div className="text-left">
+                <p className="font-mono font-semibold text-foreground text-sm">Advanced Options</p>
+                <p className="text-xs text-muted-foreground">Customize your panel name, stack & resources</p>
+              </div>
+            </div>
+            {showAdvanced ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+
+          {showAdvanced && (
+            <div className="px-5 pb-5 space-y-6 border-t border-border pt-4">
+              {/* Panel Name */}
+              <div className="space-y-2">
+                <Label htmlFor="panel-name" className="font-mono text-xs uppercase text-muted-foreground">Panel Name</Label>
+                <Input
+                  id="panel-name"
+                  placeholder="my-awesome-bot"
+                  value={panelName}
+                  onChange={(e) => setPanelName(e.target.value)}
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">Letters, numbers, and hyphens only. Used as your panel identifier.</p>
+              </div>
+
+              {/* Stack */}
+              <div className="space-y-2">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Runtime Stack</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setStack('nodejs')}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      stack === 'nodejs' ? 'border-nodejs bg-nodejs/10' : 'border-border hover:border-nodejs/50'
+                    }`}
+                  >
+                    <span className="font-mono font-bold text-2xl text-nodejs block">JS</span>
+                    <p className="text-sm text-muted-foreground mt-1">Node.js</p>
+                  </button>
+                  <button
+                    onClick={() => setStack('python')}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      stack === 'python' ? 'border-python bg-python/10' : 'border-border hover:border-python/50'
+                    }`}
+                  >
+                    <span className="font-mono font-bold text-2xl text-python block">PY</span>
+                    <p className="text-sm text-muted-foreground mt-1">Python</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* RAM Slider */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="font-mono text-xs uppercase text-muted-foreground flex items-center gap-1.5">
+                    <MemoryStick className="w-3.5 h-3.5" /> RAM
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-foreground text-sm">{ramMb} MB</span>
+                    {ramMb > 500 && (
+                      <span className="text-xs text-primary font-mono">+{formatPrice(ramToExtraKobo(ramMb))}/mo</span>
+                    )}
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={RAM_MIN}
+                    max={RAM_MAX}
+                    step={RAM_STEP}
+                    value={ramMb}
+                    onChange={(e) => setRamMb(Number(e.target.value))}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${ramPercent}%, hsl(var(--muted)) ${ramPercent}%, hsl(var(--muted)) 100%)`,
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground font-mono">
+                  <span>500 MB</span>
+                  <span>1 GB</span>
+                  <span>2 GB</span>
+                </div>
+                {ramMb === RAM_MAX && (
+                  <p className="text-xs text-warning flex items-center gap-1">
+                    <span>⚠</span> Maximum RAM limit reached
+                  </p>
+                )}
+              </div>
+
+              {/* CPU */}
+              <div className="space-y-2">
+                <Label className="font-mono text-xs uppercase text-muted-foreground flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5" /> CPU Cores
+                </Label>
+                <div className="flex gap-2">
+                  {CPU_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setCpuCores(c)}
+                      className={`flex-1 py-2 rounded-lg border text-sm font-mono transition-all ${
+                        cpuCores === c
+                          ? 'border-primary bg-primary/10 text-primary font-bold'
+                          : 'border-border text-muted-foreground hover:border-primary/50'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">CPU is shared infrastructure. Higher values give priority access.</p>
+              </div>
+
+              {/* Price Preview */}
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex justify-between items-center">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-mono">Base plan ({months} mo)</p>
+                    {ramMb > 500 && (
+                      <p className="text-xs text-muted-foreground font-mono">RAM upgrade (+{ramMb - 500} MB)</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-mono font-bold text-primary">{formatPrice(totalKobo)}</p>
+                    {months > 1 && (
+                      <p className="text-xs text-muted-foreground">{formatPrice(totalKobo / months)}/mo</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Trust Row */}
+        <div className="flex flex-wrap gap-3 justify-center text-xs text-muted-foreground pt-2">
+          <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-success" /> Secure Payment</span>
+          <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-primary" /> Instant Activation</span>
+          <span className="flex items-center gap-1"><Check className="w-3 h-3 text-success" /> 24/7 Uptime</span>
+        </div>
+
         {/* Help */}
-        <div className="mt-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Need help? Contact us on{' '}
-            <a
-              href="https://t.me/theidledeveloper"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              Telegram
-            </a>
-          </p>
+        <div className="text-center text-sm text-muted-foreground">
+          Need help?{' '}
+          <a href="https://t.me/theidledeveloper" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            Contact us on Telegram
+          </a>
         </div>
       </main>
 
-      {/* Floating Support Button */}
+      {/* Floating Support */}
       <a
         href="https://t.me/theidledeveloper"
         target="_blank"

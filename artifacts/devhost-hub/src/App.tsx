@@ -11,6 +11,7 @@ import Panel from "./pages/Panel";
 import Admin from "./pages/Admin";
 import Pricing from "./pages/Pricing";
 import Renew from "./pages/Renew";
+import TermsOfService from "./pages/TermsOfService";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
               <Route path="/renew/:id" element={<Renew />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/pricing" element={<Pricing />} />
+              <Route path="/terms" element={<TermsOfService />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>
