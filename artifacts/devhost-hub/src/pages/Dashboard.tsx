@@ -241,13 +241,13 @@ const Dashboard = () => {
           <div className="flex items-center gap-3">
             {/* Avatar with online indicator */}
             <div className="relative">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary via-primary/80 to-primary/50 flex items-center justify-center shadow-lg shadow-primary/25">
-                <span className="font-mono font-black text-sm text-primary-foreground tracking-tight">{getInitials(username)}</span>
+              <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/30 flex items-center justify-center">
+                <span className="font-mono font-black text-sm text-primary tracking-tight">{getInitials(username)}</span>
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-background shadow-[0_0_4px_hsl(var(--success)/0.8)]" />
             </div>
             <div>
-              <p className="font-semibold text-sm text-foreground leading-none">{getGreeting()}, <span className="text-primary">{firstName}</span></p>
+              <p className="font-mono font-bold text-sm text-foreground leading-none">{firstName}<span className="text-primary">@idevhost</span></p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 {isPremium ? (
                   <span className="text-[10px] font-bold font-mono tracking-widest text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">PREMIUM</span>
@@ -278,98 +278,87 @@ const Dashboard = () => {
       <main className="px-4 pb-28 pt-4 space-y-4 max-w-lg mx-auto">
 
         {/* ── Stats ────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-2.5">
 
-          {/* Panels used — wide card */}
-          <div className="col-span-2 bg-card border border-border rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-primary" />
-                <span className="text-xs font-mono font-semibold text-muted-foreground tracking-wider">PANEL USAGE</span>
-              </div>
-              <span className="font-mono font-bold text-foreground text-sm">
-                {panels.length}<span className="text-muted-foreground font-normal">/{panelsLimit || '—'}</span>
-              </span>
+          {/* Panels */}
+          <div className="bg-card border border-primary/10 rounded-2xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <Server className="w-3.5 h-3.5 text-primary" />
+              <span className="text-[9px] font-mono font-semibold text-muted-foreground/60 tracking-wider">PANELS</span>
             </div>
-            {/* Usage bar */}
-            <div className="w-full h-2 bg-muted/50 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  usagePct >= 90 ? 'bg-destructive' : usagePct >= 60 ? 'bg-warning' : 'bg-primary'
-                }`}
-                style={{ width: `${Math.min(100, usagePct)}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5 font-mono">
-              {panelsLimit === 0 ? 'No panels purchased yet' : `${panelsLimit - panels.length} slot${panelsLimit - panels.length !== 1 ? 's' : ''} remaining`}
+            <p className="text-xl font-mono font-black text-primary leading-none">
+              {panels.length}<span className="text-muted-foreground/40 text-sm font-normal">/{panelsLimit || '—'}</span>
             </p>
           </div>
 
-          {/* Running */}
-          <div className="bg-card border border-border rounded-2xl p-4 relative overflow-hidden">
-            {runningCount > 0 && (
-              <div className="absolute inset-0 bg-success/5 pointer-events-none" />
-            )}
+          {/* Online */}
+          <div className={`border rounded-2xl p-3 relative overflow-hidden ${runningCount > 0 ? 'border-success/20' : 'bg-card border-border'}`}>
+            {runningCount > 0 && <div className="absolute inset-0 bg-success/5 pointer-events-none" />}
             <div className="flex items-center justify-between mb-2">
-              <Activity className={`w-4 h-4 ${runningCount > 0 ? 'text-success' : 'text-muted-foreground/40'}`} />
-              <span className="text-[10px] font-mono font-semibold text-muted-foreground tracking-wider">ONLINE</span>
+              <Activity className={`w-3.5 h-3.5 ${runningCount > 0 ? 'text-success' : 'text-muted-foreground/40'}`} />
+              <span className="text-[9px] font-mono font-semibold text-muted-foreground/60 tracking-wider">ONLINE</span>
             </div>
-            <p className={`text-3xl font-mono font-black ${runningCount > 0 ? 'text-success' : 'text-muted-foreground/40'}`}>
+            <p className={`text-xl font-mono font-black leading-none ${runningCount > 0 ? 'text-success' : 'text-muted-foreground/40'}`}>
               {runningCount}
             </p>
             {runningCount > 0 && (
-              <div className="flex items-center gap-1 mt-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-success shadow-[0_0_4px_hsl(var(--success)/0.8)] animate-pulse" />
-                <span className="text-[10px] text-success font-mono">live</span>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                <span className="text-[9px] text-success font-mono">live</span>
               </div>
             )}
           </div>
 
           {/* Plan */}
-          <div className={`border rounded-2xl p-4 relative overflow-hidden ${isPremium ? 'bg-warning/5 border-warning/20' : 'bg-card border-border'}`}>
+          <div className={`border rounded-2xl p-3 ${isPremium ? 'bg-warning/5 border-warning/20' : 'bg-card border-border'}`}>
             <div className="flex items-center justify-between mb-2">
-              <Zap className={`w-4 h-4 ${isPremium ? 'text-warning' : 'text-muted-foreground/40'}`} />
-              <span className="text-[10px] font-mono font-semibold text-muted-foreground tracking-wider">PLAN</span>
+              <Zap className={`w-3.5 h-3.5 ${isPremium ? 'text-warning' : 'text-muted-foreground/40'}`} />
+              <span className="text-[9px] font-mono font-semibold text-muted-foreground/60 tracking-wider">PLAN</span>
             </div>
-            <p className={`text-xl font-mono font-black tracking-wider ${isPremium ? 'text-warning' : 'text-muted-foreground/50'}`}>
+            <p className={`text-xl font-mono font-black leading-none ${isPremium ? 'text-warning' : 'text-muted-foreground/40'}`}>
               {isPremium ? 'PRO' : 'FREE'}
             </p>
             {!isPremium && (
-              <button onClick={() => navigate('/pricing')} className="text-[10px] text-primary font-mono mt-1 hover:underline">
+              <button onClick={() => navigate('/pricing')} className="text-[9px] text-primary font-mono mt-1.5 hover:underline block">
                 Upgrade →
               </button>
             )}
           </div>
         </div>
 
+        {/* Usage bar */}
+        <div className="bg-card border border-border rounded-xl px-4 py-3">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] font-mono font-semibold text-muted-foreground/60 tracking-wider">CAPACITY</span>
+            <span className="font-mono font-bold text-xs text-foreground">{panels.length} / {panelsLimit || '—'}</span>
+          </div>
+          <div className="w-full h-[3px] bg-muted/40 rounded-full overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all duration-700" style={{ width: `${Math.min(100, usagePct)}%` }} />
+          </div>
+          <p className="text-[10px] text-muted-foreground/50 mt-1.5 font-mono">
+            {panelsLimit === 0 ? 'No panels purchased yet' : `${panelsLimit - panels.length} slot${panelsLimit - panels.length !== 1 ? 's' : ''} available`}
+            {panelsLimit > 0 && <> · <button onClick={() => navigate('/pricing')} className="text-primary hover:underline">buy more →</button></>}
+          </p>
+        </div>
+
         {/* ── Buy Banner ───────────────────────────────────────────────────── */}
         <div
-          className="relative rounded-2xl overflow-hidden cursor-pointer group active:scale-[0.99] transition-transform"
+          className="bg-card border border-primary/20 rounded-2xl px-4 py-4 cursor-pointer group active:scale-[0.99] transition-transform"
           onClick={() => navigate('/pricing')}
         >
-          {/* Layered gradients */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-primary/10 to-transparent" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_110%_50%,hsl(var(--primary)/0.2),transparent)]" />
-          {/* Subtle grid overlay */}
-          <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{ backgroundImage: 'linear-gradient(hsl(var(--primary)) 1px,transparent 1px),linear-gradient(90deg,hsl(var(--primary)) 1px,transparent 1px)', backgroundSize: '20px 20px' }}
-          />
-          <div className="relative border border-primary/30 rounded-2xl px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center shrink-0 group-hover:bg-primary/25 transition-colors">
-                  <ShoppingCart className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-bold text-foreground text-sm">Host your next project</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">From <span className="text-primary font-semibold">₦1,400/month</span> · Instant activation</p>
-                </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                <ShoppingCart className="w-5 h-5 text-primary" />
               </div>
-              <div className="shrink-0 ml-3">
-                <div className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-xl group-hover:bg-primary/90 transition-colors">
-                  Buy <ChevronRight className="w-3.5 h-3.5" />
-                </div>
+              <div>
+                <p className="font-bold text-foreground text-sm font-mono">Deploy another panel</p>
+                <p className="text-xs text-muted-foreground mt-0.5 font-mono">From <span className="text-primary font-semibold">₦1,400/mo</span> · instant</p>
+              </div>
+            </div>
+            <div className="shrink-0 ml-3">
+              <div className="flex items-center gap-1 bg-primary text-primary-foreground text-[11px] font-mono font-bold px-3 py-2 rounded-lg">
+                BUY <ChevronRight className="w-3 h-3" />
               </div>
             </div>
           </div>

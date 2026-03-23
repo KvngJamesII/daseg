@@ -19,7 +19,7 @@ export function Cockpit() {
       {/* Header */}
       <div style={{ background: "#0d0d1a", borderBottom: "1px solid #1a1a2e", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(135deg,#00e676,#00b0ff)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, color: "#000", boxShadow: "0 0 16px #00e67640" }}>JA</div>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: "#0d1a12", border: "1px solid #00e67640", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, color: "#00e676" }}>JA</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13, color: "#fff" }}>james<span style={{ color: "#00e676" }}>@idevhost</span></div>
             <div style={{ fontSize: 10, color: "#444", letterSpacing: "0.1em" }}>PREMIUM · 3/5 PANELS</div>
@@ -57,7 +57,7 @@ export function Cockpit() {
             <span style={{ color: "#00b0ff", fontWeight: 700 }}>3 / 5</span>
           </div>
           <div style={{ height: 4, background: "#1a1a2e", borderRadius: 4, overflow: "hidden" }}>
-            <div style={{ width: "60%", height: "100%", background: "linear-gradient(90deg,#00b0ff,#00e676)", borderRadius: 4, boxShadow: "0 0 8px #00b0ff60" }} />
+            <div style={{ width: "60%", height: "100%", background: "#00e676", borderRadius: 4 }} />
           </div>
           <div style={{ marginTop: 6, fontSize: 10, color: "#333" }}>2 slots available · <span style={{ color: "#00e676", cursor: "pointer" }}>buy more →</span></div>
         </div>
