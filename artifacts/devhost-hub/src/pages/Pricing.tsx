@@ -294,49 +294,49 @@ const Pricing = () => {
 
   if (purchasing && searchParams.get('reference')) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0c0c0f' }}>
         <div className="text-center space-y-4">
-          <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.2)' }}>
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#4ade80' }} />
           </div>
-          <p className="font-mono text-muted-foreground text-sm">Verifying payment…</p>
+          <p className="font-mono text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>Verifying payment…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: '#0c0c0f' }}>
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-border px-4 py-3 flex items-center gap-3 shrink-0">
+      <header className="sticky top-0 z-50 backdrop-blur px-4 py-3 flex items-center gap-3 shrink-0" style={{ background: 'rgba(12,12,15,0.92)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
         <Link to={user ? '/dashboard' : '/'}>
-          <Button variant="ghost" size="icon" className="h-9 w-9">
+          <Button variant="ghost" size="icon" className="h-9 w-9" style={{ color: 'rgba(255,255,255,0.7)' }}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
         </Link>
         <div>
-          <h1 className="font-semibold text-sm text-foreground">Choose a Plan</h1>
-          <p className="text-xs text-muted-foreground">Monthly · Instant activation · No DevOps</p>
+          <h1 className="font-semibold text-sm" style={{ color: '#fff' }}>Choose a Plan</h1>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Monthly · Instant activation · No DevOps</p>
         </div>
       </header>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div className="shrink-0 pt-5 pb-3 px-4 text-center space-y-2">
-        <h2 className="text-2xl font-bold text-foreground leading-tight">
+        <h2 className="text-2xl font-bold leading-tight" style={{ color: '#fff' }}>
           Pick your plan,{' '}
-          <span className="text-primary">ship today</span>
+          <span style={{ color: '#4ade80' }}>ship today</span>
         </h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
           All plans include auto-restart, file manager &amp; 24/7 uptime.
         </p>
       </div>
 
       {/* ── Social proof ─────────────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center justify-center gap-5 pb-4 text-xs text-muted-foreground px-4">
-        <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-primary" />500+ devs</span>
-        <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-warning fill-warning" />4.9/5 rating</span>
-        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-primary" />99.9% uptime</span>
+      <div className="shrink-0 flex items-center justify-center gap-5 pb-4 text-xs px-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />500+ devs</span>
+        <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5 fill-current" style={{ color: '#fbbf24' }} />4.9/5 rating</span>
+        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />99.9% uptime</span>
       </div>
 
       {/* ── Carousel ─────────────────────────────────────────────────────── */}
@@ -346,8 +346,8 @@ const Pricing = () => {
         <button
           onClick={() => scrollTo(activeIndex - 1)}
           disabled={activeIndex === 0}
-          className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-10 w-11 h-11 items-center justify-center rounded-full bg-card border border-border text-foreground shadow-lg transition-all hover:border-primary hover:text-primary hover:shadow-primary/25 hover:shadow-lg disabled:opacity-25 disabled:cursor-not-allowed"
-          style={{ boxShadow: activeIndex > 0 ? '0 0 0 1px hsl(var(--primary)/0.2), 0 4px 24px hsl(var(--primary)/0.15)' : undefined }}
+          className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-10 w-11 h-11 items-center justify-center rounded-full transition-all disabled:opacity-25 disabled:cursor-not-allowed"
+          style={{ background: '#1a1a20', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -356,8 +356,8 @@ const Pricing = () => {
         <button
           onClick={() => scrollTo(activeIndex + 1)}
           disabled={activeIndex === PLANS.length - 1}
-          className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-10 w-11 h-11 items-center justify-center rounded-full bg-card border border-border text-foreground shadow-lg transition-all hover:border-primary hover:text-primary hover:shadow-primary/25 hover:shadow-lg disabled:opacity-25 disabled:cursor-not-allowed"
-          style={{ boxShadow: activeIndex < PLANS.length - 1 ? '0 0 0 1px hsl(var(--primary)/0.2), 0 4px 24px hsl(var(--primary)/0.15)' : undefined }}
+          className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-10 w-11 h-11 items-center justify-center rounded-full transition-all disabled:opacity-25 disabled:cursor-not-allowed"
+          style={{ background: '#1a1a20', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}
         >
           <ChevronRight className="w-5 h-5" />
         </button>
@@ -382,37 +382,59 @@ const Pricing = () => {
           const isActive = i === activeIndex;
           const isLoading = purchasing === plan.id;
 
+          // Per-plan accent colours
+          const accentColor =
+            plan.id === 'starter' ? 'rgba(255,255,255,0.35)' :
+            plan.id === 'basic'   ? '#4ade80' :
+            plan.id === 'standard'? '#60a5fa' :
+            '#fbbf24';
+          const accentBg =
+            plan.id === 'starter' ? 'rgba(255,255,255,0.05)' :
+            plan.id === 'basic'   ? 'rgba(74,222,128,0.1)' :
+            plan.id === 'standard'? 'rgba(96,165,250,0.1)' :
+            'rgba(251,191,36,0.1)';
+          const accentBorder =
+            plan.id === 'starter' ? 'rgba(255,255,255,0.07)' :
+            plan.id === 'basic'   ? 'rgba(74,222,128,0.25)' :
+            plan.id === 'standard'? 'rgba(96,165,250,0.25)' :
+            'rgba(251,191,36,0.25)';
+          const barColor =
+            plan.id === 'starter' ? 'rgba(255,255,255,0.15)' :
+            plan.id === 'basic'   ? '#22c55e' :
+            plan.id === 'standard'? '#3b82f6' :
+            '#f59e0b';
+          const btnStyle =
+            plan.id === 'starter' ? { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff' } :
+            plan.id === 'basic'   ? { background: '#16a34a', color: '#fff', boxShadow: '0 4px 24px rgba(34,197,94,0.3)' } :
+            plan.id === 'standard'? { background: '#2563eb', color: '#fff', boxShadow: '0 4px 24px rgba(59,130,246,0.3)' } :
+            { background: '#d97706', color: '#fff', boxShadow: '0 4px 24px rgba(251,191,36,0.3)' };
+          const badgeStyle =
+            plan.id === 'basic'   ? { background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80' } :
+            plan.id === 'standard'? { background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)', color: '#60a5fa' } :
+            { background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' };
+
           return (
             <div
               key={plan.id}
-              className="shrink-0 flex flex-col rounded-2xl border bg-card overflow-hidden transition-all duration-300"
+              className="shrink-0 flex flex-col rounded-2xl overflow-hidden transition-all duration-300"
               style={{
                 scrollSnapAlign: 'center',
                 width: 'min(85vw, 340px)',
                 minWidth: '260px',
-                borderColor: isActive && plan.badge
-                  ? plan.id === 'basic' ? 'hsl(var(--primary)/0.6)'
-                  : plan.id === 'standard' ? 'hsl(var(--accent)/0.5)'
-                  : plan.id === 'pro' ? 'hsl(var(--warning)/0.5)'
-                  : 'hsl(var(--border))'
-                  : 'hsl(var(--border))',
+                background: '#141418',
+                border: isActive && plan.badge ? `1px solid ${accentBorder}` : '1px solid rgba(255,255,255,0.07)',
                 transform: isActive ? 'scale(1)' : 'scale(0.97)',
-                opacity: isActive ? 1 : 0.7,
+                opacity: isActive ? 1 : 0.65,
               }}
             >
-              {/* Top color bar */}
-              <div className={`h-1 w-full bg-gradient-to-r ${
-                plan.id === 'starter' ? 'from-muted to-muted' :
-                plan.id === 'basic' ? 'from-primary/50 via-primary to-primary/50' :
-                plan.id === 'standard' ? 'from-accent/50 via-accent to-accent/50' :
-                'from-warning/50 via-warning to-warning/50'
-              }`} />
+              {/* Top accent bar */}
+              <div style={{ height: 3, background: barColor, opacity: isActive ? 1 : 0.5 }} />
 
               <div className="flex flex-col flex-1 p-5">
                 {/* Badge */}
                 {plan.badge && (
                   <div className="flex mb-3">
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${plan.badgeClass}`}>
+                    <span className="text-xs font-bold px-3 py-1 rounded-full" style={badgeStyle}>
                       {plan.badge}
                     </span>
                   </div>
@@ -422,27 +444,17 @@ const Pricing = () => {
                 {/* Icon + Name + Price */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
-                      plan.id === 'starter' ? 'bg-muted/60 border border-border' :
-                      plan.id === 'basic' ? 'bg-primary/15 border border-primary/25' :
-                      plan.id === 'standard' ? 'bg-accent/15 border border-accent/20' :
-                      'bg-warning/15 border border-warning/20'
-                    }`}>
-                      <Icon className={`w-5 h-5 ${
-                        plan.id === 'starter' ? 'text-muted-foreground' :
-                        plan.id === 'basic' ? 'text-primary' :
-                        plan.id === 'standard' ? 'text-accent' :
-                        'text-warning'
-                      }`} />
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: accentBg, border: `1px solid ${accentBorder}` }}>
+                      <Icon className="w-5 h-5" style={{ color: accentColor }} />
                     </div>
                     <div>
-                      <p className="font-bold text-lg text-foreground leading-none">{plan.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-tight max-w-[110px]">{plan.tagline}</p>
+                      <p className="font-bold text-lg leading-none" style={{ color: '#fff' }}>{plan.name}</p>
+                      <p className="text-xs mt-0.5 leading-tight max-w-[110px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{plan.tagline}</p>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-2xl font-black font-mono text-foreground leading-none">{fmt(plan.priceKobo)}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">/month</p>
+                    <p className="text-2xl font-black font-mono leading-none" style={{ color: '#fff' }}>{fmt(plan.priceKobo)}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>/month</p>
                   </div>
                 </div>
 
@@ -453,14 +465,9 @@ const Pricing = () => {
                     { icon: Cpu, label: plan.cpu },
                     { icon: HardDrive, label: plan.storage },
                   ].map(({ icon: I, label }) => (
-                    <div key={label} className="flex flex-col items-center gap-1 text-center bg-muted/40 border border-border rounded-xl py-2.5 px-1">
-                      <I className={`w-4 h-4 ${
-                        plan.id === 'starter' ? 'text-muted-foreground' :
-                        plan.id === 'basic' ? 'text-primary' :
-                        plan.id === 'standard' ? 'text-accent' :
-                        'text-warning'
-                      }`} />
-                      <span className="text-[11px] font-mono font-semibold text-foreground leading-none">{label}</span>
+                    <div key={label} className="flex flex-col items-center gap-1 text-center rounded-xl py-2.5 px-1" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <I className="w-4 h-4" style={{ color: accentColor }} />
+                      <span className="text-[11px] font-mono font-semibold leading-none" style={{ color: '#fff' }}>{label}</span>
                     </div>
                   ))}
                 </div>
@@ -469,27 +476,18 @@ const Pricing = () => {
                 <ul className="space-y-2 mb-5 flex-1">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                        plan.id === 'starter' ? 'bg-muted/80' :
-                        plan.id === 'basic' ? 'bg-primary/20' :
-                        plan.id === 'standard' ? 'bg-accent/20' :
-                        'bg-warning/20'
-                      }`}>
-                        <Check className={`w-2.5 h-2.5 ${
-                          plan.id === 'starter' ? 'text-muted-foreground' :
-                          plan.id === 'basic' ? 'text-primary' :
-                          plan.id === 'standard' ? 'text-accent' :
-                          'text-warning'
-                        }`} />
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5" style={{ background: accentBg }}>
+                        <Check className="w-2.5 h-2.5" style={{ color: accentColor }} />
                       </div>
-                      <span className="text-muted-foreground text-sm leading-tight">{f}</span>
+                      <span className="text-sm leading-tight" style={{ color: 'rgba(255,255,255,0.55)' }}>{f}</span>
                     </li>
                   ))}
                 </ul>
 
                 {/* CTA */}
-                <Button
-                  className={`w-full h-12 font-bold text-base gap-2 ${plan.btnClass}`}
+                <button
+                  className="w-full h-12 font-bold text-base rounded-xl flex items-center justify-center gap-2 transition-opacity disabled:opacity-50"
+                  style={btnStyle}
                   onClick={() => handlePurchase(plan)}
                   disabled={!!purchasing}
                 >
@@ -498,7 +496,7 @@ const Pricing = () => {
                   ) : (
                     <>Get {plan.name} <ChevronRight className="w-4 h-4" /></>
                   )}
-                </Button>
+                </button>
               </div>
             </div>
           );
@@ -515,26 +513,26 @@ const Pricing = () => {
           <button
             key={i}
             onClick={() => scrollTo(i)}
-            className={`h-1.5 rounded-full transition-all duration-300 ${
-              i === activeIndex
-                ? 'w-6 bg-primary'
-                : 'w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-            }`}
+            className="h-1.5 rounded-full transition-all duration-300"
+            style={{
+              width: i === activeIndex ? 24 : 6,
+              background: i === activeIndex ? '#4ade80' : 'rgba(255,255,255,0.2)',
+            }}
           />
         ))}
       </div>
 
       {/* Swipe / arrow hint */}
-      <p className="text-center text-xs text-muted-foreground/40 pb-2 font-mono shrink-0 md:hidden">
+      <p className="text-center text-xs pb-2 font-mono shrink-0 md:hidden" style={{ color: 'rgba(255,255,255,0.2)' }}>
         ← swipe to compare →
       </p>
-      <p className="text-center text-xs text-muted-foreground/40 pb-2 font-mono shrink-0 hidden md:block">
+      <p className="text-center text-xs pb-2 font-mono shrink-0 hidden md:block" style={{ color: 'rgba(255,255,255,0.2)' }}>
         use the arrows to browse plans
       </p>
 
       {/* ── Included in all plans ─────────────────────────────────────────── */}
-      <div className="mx-4 mb-4 rounded-2xl border border-border bg-card/40 p-4 shrink-0">
-        <p className="text-xs font-semibold text-foreground text-center mb-3">Included in every plan</p>
+      <div className="mx-4 mb-4 rounded-2xl p-4 shrink-0" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <p className="text-xs font-semibold text-center mb-3" style={{ color: 'rgba(255,255,255,0.6)' }}>Included in every plan</p>
         <div className="grid grid-cols-3 gap-3">
           {[
             { icon: Shield, text: 'Auto-restart on crash' },
@@ -542,10 +540,10 @@ const Pricing = () => {
             { icon: Clock, text: '24/7 monitoring' },
           ].map(({ icon: I, text }) => (
             <div key={text} className="flex flex-col items-center gap-1.5 text-center">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <I className="w-4 h-4 text-primary" />
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}>
+                <I className="w-4 h-4" style={{ color: '#4ade80' }} />
               </div>
-              <span className="text-[11px] text-muted-foreground leading-tight">{text}</span>
+              <span className="text-[11px] leading-tight" style={{ color: 'rgba(255,255,255,0.4)' }}>{text}</span>
             </div>
           ))}
         </div>
@@ -553,17 +551,18 @@ const Pricing = () => {
 
       {/* ── ToS & support ────────────────────────────────────────────────── */}
       <div className="shrink-0 px-4 pb-6 space-y-3 text-center">
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
           By purchasing you agree to our{' '}
-          <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
+          <Link to="/terms" style={{ color: '#4ade80' }} className="hover:underline">Terms of Service</Link>
           {' '}·{' '}
-          <span className="text-warning font-medium">All sales are final · No refunds</span>
+          <span style={{ color: '#fbbf24' }} className="font-medium">All sales are final · No refunds</span>
         </p>
         <a
           href="https://t.me/theidledeveloper"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+          className="inline-flex items-center gap-2 text-sm hover:underline"
+          style={{ color: '#4ade80' }}
         >
           <MessageCircle className="w-4 h-4" />
           Questions? Chat on Telegram
