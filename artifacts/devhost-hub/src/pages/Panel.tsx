@@ -152,6 +152,12 @@ const PanelPage = () => {
     } else { setLiveUptime(0); }
   }, [vmStatus?.uptime, vmStatus?.status]);
 
+  /* ── Silently provision terminal tools after container is live ── */
+  const provisionEnv = (panelId: string) => {
+    // Fire-and-forget: install tmux inside the container so Terminal tab works
+    vmApi.exec(panelId, 'apt-get install -y --no-install-recommends tmux').catch(() => {});
+  };
+
   const handleStart = async () => {
     if (!id || !panel) return; setAL(true);
     try {
@@ -165,6 +171,7 @@ const PanelPage = () => {
       await supabase.from('panels').update({ status: 'running' }).eq('id', id);
       await supabase.from('panel_logs').insert({ panel_id: id, message: `Started on port ${result.port} (${ep})`, log_type: 'success' });
       setPanel({ ...panel, status: 'running' });
+      provisionEnv(id); // install tmux + tools silently in background
       toast({ title: 'Panel started', description: result.message || 'Now running' });
       fetchVmStatus();
     } catch (error: any) {
