@@ -19,6 +19,7 @@ import {
   Users,
   Clock,
   ChevronRight,
+  ChevronLeft,
   Shield,
 } from 'lucide-react';
 
@@ -150,39 +151,50 @@ const Pricing = () => {
     if (ref) verifyPayment(ref);
   }, [searchParams]);
 
-  // Scroll to Most Popular on mount
+  // Scroll to Most Popular (index 1) on mount using center-based calculation
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // slight delay so the DOM is painted
-    requestAnimationFrame(() => {
-      const card = el.children[1] as HTMLElement;
-      if (card) {
-        el.scrollLeft = card.offsetLeft - 16;
-      }
+    // Wait for layout to settle
+    const raf = requestAnimationFrame(() => {
+      setTimeout(() => {
+        const card = el.children[2] as HTMLElement; // children[0]=left spacer, [1]=Starter, [2]=Basic
+        if (card) {
+          const targetLeft = card.offsetLeft + card.offsetWidth / 2 - el.clientWidth / 2;
+          el.scrollLeft = Math.max(0, targetLeft);
+        }
+      }, 50);
     });
+    return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Track which card is in view
+  // Track which card is in view (children[0] is the left spacer, real cards start at index 1)
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    const cards = Array.from(el.children) as HTMLElement[];
+    const center = el.scrollLeft + el.clientWidth / 2;
+    const cards = Array.from(el.children).slice(1, PLANS.length + 1) as HTMLElement[];
     let closest = 0;
     let closestDist = Infinity;
     cards.forEach((card, i) => {
-      const dist = Math.abs(card.offsetLeft - el.scrollLeft - 16);
+      const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+      const dist = Math.abs(cardCenter - center);
       if (dist < closestDist) { closestDist = dist; closest = i; }
     });
     setActiveIndex(closest);
   };
 
   const scrollTo = (index: number) => {
+    const clamped = Math.max(0, Math.min(PLANS.length - 1, index));
     const el = scrollRef.current;
     if (!el) return;
-    const card = el.children[index] as HTMLElement;
-    if (card) el.scrollTo({ left: card.offsetLeft - 16, behavior: 'smooth' });
-    setActiveIndex(index);
+    // +1 because children[0] is the left spacer
+    const card = el.children[clamped + 1] as HTMLElement;
+    if (card) {
+      const targetLeft = card.offsetLeft + card.offsetWidth / 2 - el.clientWidth / 2;
+      el.scrollTo({ left: targetLeft, behavior: 'smooth' });
+    }
+    setActiveIndex(clamped);
   };
 
   const verifyPayment = async (reference: string) => {
@@ -284,18 +296,43 @@ const Pricing = () => {
       </div>
 
       {/* ── Carousel ─────────────────────────────────────────────────────── */}
-      {/* Overflow is hidden on the page level, cards peek on the right */}
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex gap-4 overflow-x-auto pb-4 px-4 scroll-smooth"
-        style={{
-          scrollSnapType: 'x mandatory',
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-        }}
-      >
+      <div className="relative shrink-0">
+
+        {/* Desktop: Prev button */}
+        <button
+          onClick={() => scrollTo(activeIndex - 1)}
+          disabled={activeIndex === 0}
+          className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-10 w-11 h-11 items-center justify-center rounded-full bg-card border border-border text-foreground shadow-lg transition-all hover:border-primary hover:text-primary hover:shadow-primary/25 hover:shadow-lg disabled:opacity-25 disabled:cursor-not-allowed"
+          style={{ boxShadow: activeIndex > 0 ? '0 0 0 1px hsl(var(--primary)/0.2), 0 4px 24px hsl(var(--primary)/0.15)' : undefined }}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        {/* Desktop: Next button */}
+        <button
+          onClick={() => scrollTo(activeIndex + 1)}
+          disabled={activeIndex === PLANS.length - 1}
+          className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-10 w-11 h-11 items-center justify-center rounded-full bg-card border border-border text-foreground shadow-lg transition-all hover:border-primary hover:text-primary hover:shadow-primary/25 hover:shadow-lg disabled:opacity-25 disabled:cursor-not-allowed"
+          style={{ boxShadow: activeIndex < PLANS.length - 1 ? '0 0 0 1px hsl(var(--primary)/0.2), 0 4px 24px hsl(var(--primary)/0.15)' : undefined }}
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+
+        {/* Scroll track */}
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex gap-4 overflow-x-auto pb-4"
+          style={{
+            scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
+          {/* Left spacer — pushes first card to center */}
+          <div className="shrink-0" style={{ width: 'calc((100vw - min(85vw, 340px)) / 2 - 8px)', minWidth: '4px' }} aria-hidden />
+
         {PLANS.map((plan, i) => {
           const Icon = plan.icon;
           const isActive = i === activeIndex;
@@ -306,9 +343,8 @@ const Pricing = () => {
               key={plan.id}
               className="shrink-0 flex flex-col rounded-2xl border bg-card overflow-hidden transition-all duration-300"
               style={{
-                scrollSnapAlign: 'start',
-                width: 'calc(85vw)',
-                maxWidth: '340px',
+                scrollSnapAlign: 'center',
+                width: 'min(85vw, 340px)',
                 minWidth: '260px',
                 borderColor: isActive && plan.badge
                   ? plan.id === 'basic' ? 'hsl(var(--primary)/0.6)'
@@ -423,7 +459,11 @@ const Pricing = () => {
             </div>
           );
         })}
-      </div>
+
+          {/* Right spacer — lets last card center */}
+          <div className="shrink-0" style={{ width: 'calc((100vw - min(85vw, 340px)) / 2 - 8px)', minWidth: '4px' }} aria-hidden />
+        </div>{/* end scroll track */}
+      </div>{/* end relative wrapper */}
 
       {/* ── Dot indicators ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-center gap-2 py-2 shrink-0">
@@ -440,9 +480,12 @@ const Pricing = () => {
         ))}
       </div>
 
-      {/* ── Swipe hint (first visit only fades away via opacity-0 after 2s) */}
-      <p className="text-center text-xs text-muted-foreground/50 pb-2 font-mono shrink-0">
+      {/* Swipe / arrow hint */}
+      <p className="text-center text-xs text-muted-foreground/40 pb-2 font-mono shrink-0 md:hidden">
         ← swipe to compare →
+      </p>
+      <p className="text-center text-xs text-muted-foreground/40 pb-2 font-mono shrink-0 hidden md:block">
+        use the arrows to browse plans
       </p>
 
       {/* ── Included in all plans ─────────────────────────────────────────── */}
