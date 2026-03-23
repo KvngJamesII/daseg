@@ -25,10 +25,10 @@ const PLANS = [
     duration: '1 month',
     durationHours: 720,
     panels: 1,
-    color: '#00b0ff',
-    bg: '#00b0ff12',
-    border: '#00b0ff30',
-    features: ['1 Panel', 'Node.js or Python', 'Community support'],
+    color: '#94a3b8',
+    bg: '#94a3b812',
+    border: '#94a3b830',
+    features: ['500 MB RAM', '0.5 CPU core', '1 GB storage', 'Node.js & Python'],
     popular: false,
   },
   {
@@ -37,12 +37,12 @@ const PLANS = [
     price: '₦2,500',
     duration: '1 month',
     durationHours: 720,
-    panels: 2,
-    color: '#00e676',
-    bg: '#00e67612',
-    border: '#00e67630',
-    features: ['2 Panels', 'Both languages', 'Priority support'],
-    popular: false,
+    panels: 1,
+    color: '#22c55e',
+    bg: '#22c55e12',
+    border: '#22c55e30',
+    features: ['1 GB RAM', '1 CPU core', '2 GB storage', 'Priority support'],
+    popular: true,
   },
   {
     id: 'standard',
@@ -50,12 +50,12 @@ const PLANS = [
     price: '₦4,200',
     duration: '1 month',
     durationHours: 720,
-    panels: 3,
-    color: '#f0b429',
-    bg: '#f0b42912',
-    border: '#f0b42930',
-    features: ['3 Panels', 'Both languages', 'Priority support'],
-    popular: true,
+    panels: 1,
+    color: '#60a5fa',
+    bg: '#60a5fa12',
+    border: '#60a5fa30',
+    features: ['1.5 GB RAM', '1.5 CPU cores', '3 GB storage', 'Best value'],
+    popular: false,
   },
   {
     id: 'pro',
@@ -63,11 +63,11 @@ const PLANS = [
     price: '₦6,500',
     duration: '1 month',
     durationHours: 720,
-    panels: 5,
-    color: '#a78bfa',
-    bg: '#a78bfa12',
-    border: '#a78bfa30',
-    features: ['5 Panels', 'Both languages', 'Dedicated support'],
+    panels: 1,
+    color: '#fbbf24',
+    bg: '#fbbf2412',
+    border: '#fbbf2430',
+    features: ['2 GB RAM', '2 CPU cores', '4 GB storage', 'Dedicated support'],
     popular: false,
   },
 ];
@@ -88,11 +88,11 @@ const MAX_USES_OPTIONS = [
   { value: 'unlimited',  label: 'Unlimited' },
 ];
 
-const BG     = '#0c0d16';
-const CARD   = '#0d0d1a';
-const CARD2  = '#111122';
-const BORDER = '#1a1a2e';
-const MUTED  = '#5a5a88';
+const BG     = '#0c0c0f';
+const CARD   = '#141418';
+const CARD2  = '#1a1a1e';
+const BORDER = 'rgba(255,255,255,0.07)';
+const MUTED  = 'rgba(255,255,255,0.35)';
 
 export function RedeemCodeDialog({ open, onOpenChange, onCreated }: RedeemCodeDialogProps) {
   const [selectedPlan, setSelectedPlan] = useState<typeof PLANS[0] | null>(null);
@@ -291,7 +291,7 @@ export function RedeemCodeDialog({ open, onOpenChange, onCreated }: RedeemCodeDi
               <button
                 onClick={handleCreate}
                 disabled={!selectedPlan || loading}
-                style={{ width: '100%', padding: '12px', borderRadius: 10, background: selectedPlan ? '#a78bfa' : '#2a2a4a', border: 'none', fontWeight: 700, fontSize: 13, cursor: selectedPlan ? 'pointer' : 'default', fontFamily: 'monospace', color: selectedPlan ? '#fff' : MUTED, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s' }}
+                style={{ width: '100%', padding: '12px', borderRadius: 10, background: selectedPlan ? '#22c55e' : 'rgba(255,255,255,0.06)', border: 'none', fontWeight: 700, fontSize: 13, cursor: selectedPlan ? 'pointer' : 'default', fontFamily: 'monospace', color: selectedPlan ? '#000' : MUTED, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s' }}
               >
                 {loading ? <Loader2 style={{ width: 15, height: 15, animation: 'spin 1s linear infinite' }} /> : <Gift style={{ width: 15, height: 15 }} />}
                 {loading ? 'Generating…' : selectedPlan ? `Generate Code · ${selectedPlan.name}` : 'Select a plan above'}

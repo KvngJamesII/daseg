@@ -7,9 +7,9 @@ const Index = () => {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground" style={{ background: '#0c0c0f' }}>
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
+      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b border-border" style={{ background: 'rgba(12,12,15,0.92)' }}>
         <div className="container flex items-center justify-between h-14 px-4">
           <Link to="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded bg-primary/20 border border-primary/50 flex items-center justify-center">
@@ -47,7 +47,7 @@ const Index = () => {
         <section className="relative min-h-[90vh] flex items-center py-20 px-4 overflow-hidden">
           {/* Background grid pattern */}
           <div className="absolute inset-0 bg-[linear-gradient(rgba(34,197,94,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(34,197,94,0.03)_1px,transparent_1px)] bg-[size:50px_50px]" />
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent, transparent, #0c0c0f)' }} />
           
           <div className="container relative z-10 grid lg:grid-cols-2 gap-12 items-center">
             {/* Left side - Text */}

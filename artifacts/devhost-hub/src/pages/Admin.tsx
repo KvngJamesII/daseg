@@ -120,6 +120,10 @@ interface Plan {
   is_popular: boolean;
   is_active: boolean;
   features?: string[];
+  ram_mb?: number;
+  cpu_cores?: number;
+  storage_mb?: number;
+  sort_order?: number;
 }
 
 interface Stats {
@@ -451,6 +455,9 @@ const Admin = () => {
       description: edits.description,
       is_active: edits.is_active,
       is_popular: edits.is_popular,
+      ram_mb: edits.ram_mb,
+      cpu_cores: edits.cpu_cores,
+      storage_mb: edits.storage_mb,
     }).eq('id', plan.id);
     if (error) { toast({ title: 'Error', description: 'Failed to update plan', variant: 'destructive' }); }
     else { toast({ title: 'Plan Updated!', description: `${edits.name} saved` }); fetchData(); setEditingPlan(null); }
@@ -844,6 +851,50 @@ const Admin = () => {
                         )}
                       </div>
                       <div>
+                        <div style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginBottom: 4 }}>RAM (MB)</div>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={edits.ram_mb || 0}
+                            onChange={e => updatePlanEdit(plan.id, 'ram_mb', parseInt(e.target.value) || 0)}
+                            style={{ width: '100%', background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#cccde8', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        ) : (
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 18, color: '#60a5fa' }}>
+                            {edits.ram_mb ? (edits.ram_mb >= 1024 ? `${(edits.ram_mb / 1024).toFixed(1).replace(/\.0$/, '')} GB` : `${edits.ram_mb} MB`) : '—'}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginBottom: 4 }}>CPU (CORES)</div>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={edits.cpu_cores || 0}
+                            onChange={e => updatePlanEdit(plan.id, 'cpu_cores', parseFloat(e.target.value) || 0)}
+                            style={{ width: '100%', background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#cccde8', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        ) : (
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 18, color: '#60a5fa' }}>{edits.cpu_cores ?? '—'}</div>
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginBottom: 4 }}>STORAGE (MB)</div>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={edits.storage_mb || 0}
+                            onChange={e => updatePlanEdit(plan.id, 'storage_mb', parseInt(e.target.value) || 0)}
+                            style={{ width: '100%', background: CARD2, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#cccde8', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        ) : (
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 18, color: '#60a5fa' }}>
+                            {edits.storage_mb ? (edits.storage_mb >= 1024 ? `${(edits.storage_mb / 1024).toFixed(1).replace(/\.0$/, '')} GB` : `${edits.storage_mb} MB`) : '—'}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
                         <div style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginBottom: 4 }}>DESCRIPTION</div>
                         {isEditing ? (
                           <input
