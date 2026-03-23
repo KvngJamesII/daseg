@@ -253,7 +253,7 @@ const Dashboard = () => {
             <Terminal size={16} color="#00e676" />
           </div>
         </div>
-        <p style={{ fontFamily: 'monospace', fontSize: 11, color: '#2a2a3a', letterSpacing: '0.12em' }}>CONNECTING...</p>
+        <p style={{ fontFamily: 'monospace', fontSize: 11, color: '#6b7a99', letterSpacing: '0.12em' }}>CONNECTING...</p>
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -324,7 +324,7 @@ const Dashboard = () => {
                     <span style={{ fontSize: 11, color: '#f0b429', fontWeight: 600 }}>PREMIUM</span>
                   </>
                 ) : (
-                  <span style={{ fontSize: 11, color: '#333' }}>Free plan</span>
+                  <span style={{ fontSize: 11, color: '#6b7a99' }}>Free plan</span>
                 )}
               </div>
             </div>
@@ -336,7 +336,7 @@ const Dashboard = () => {
               disabled={refreshing}
               style={{ width: 34, height: 34, borderRadius: 10, background: '#0d0d1a', border: '1px solid #1a1a2e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              <RefreshCw size={13} color="#333" style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+              <RefreshCw size={13} color="#6b7a99" style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
             </button>
             {isAdmin && (
               <Link to="/admin">
@@ -349,7 +349,7 @@ const Dashboard = () => {
               onClick={handleSignOut}
               style={{ width: 34, height: 34, borderRadius: 10, background: '#0d0d1a', border: '1px solid #1a1a2e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
-              <LogOut size={13} color="#333" />
+              <LogOut size={13} color="#6b7a99" />
             </button>
           </div>
         </header>
@@ -362,10 +362,10 @@ const Dashboard = () => {
             {[
               { label: 'PANELS', value: `${panels.length}/${panelsLimit || '—'}`, color: '#00b0ff' },
               { label: 'ONLINE', value: String(runningCount), color: '#00e676' },
-              { label: 'PLAN', value: isPremium ? 'PRO' : 'FREE', color: isPremium ? '#f0b429' : '#333' },
+              { label: 'PLAN', value: isPremium ? 'PRO' : 'FREE', color: isPremium ? '#f0b429' : '#6b7a99' },
             ].map(s => (
-              <div key={s.label} style={{ background: '#0d0d1a', border: `1px solid ${s.color}1a`, borderRadius: 16, padding: '13px 11px 9px', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ fontSize: 9, color: '#333', letterSpacing: '0.12em', fontWeight: 600, marginBottom: 5 }}>{s.label}</div>
+              <div key={s.label} style={{ background: '#111122', border: `1px solid ${s.color}25`, borderRadius: 16, padding: '13px 11px 9px', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ fontSize: 9, color: '#6b7a99', letterSpacing: '0.12em', fontWeight: 600, marginBottom: 5 }}>{s.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{s.value}</div>
                 <div style={{ position: 'absolute', bottom: 4, right: 2, opacity: 0.35 }}>
                   <Sparkline color={s.color} />
@@ -375,15 +375,15 @@ const Dashboard = () => {
           </div>
 
           {/* ── Capacity bar ── */}
-          <div style={{ background: '#0d0d1a', border: '1px solid #1a1a2e', borderRadius: 12, padding: '12px 16px' }}>
+          <div style={{ background: '#111122', border: '1px solid #1e2040', borderRadius: 12, padding: '12px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 10, color: '#333', letterSpacing: '0.1em', fontWeight: 600 }}>CAPACITY</span>
+              <span style={{ fontSize: 10, color: '#6b7a99', letterSpacing: '0.1em', fontWeight: 600 }}>CAPACITY</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#00b0ff' }}>{panels.length} / {panelsLimit || '—'}</span>
             </div>
-            <div style={{ height: 3, background: '#1a1a2e', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min(100, usagePct)}%`, height: '100%', background: usagePct >= 90 ? '#ff4d4d' : usagePct >= 60 ? '#f0b429' : '#00b0ff', borderRadius: 3, transition: 'width 0.7s ease' }} />
+            <div style={{ height: 4, background: '#1e2040', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, usagePct)}%`, height: '100%', background: usagePct >= 90 ? '#ff4d4d' : usagePct >= 60 ? '#f0b429' : '#00b0ff', borderRadius: 4, transition: 'width 0.7s ease' }} />
             </div>
-            <div style={{ marginTop: 6, fontSize: 10, color: '#2a2a3a' }}>
+            <div style={{ marginTop: 6, fontSize: 12, color: '#6b7a99' }}>
               {panelsLimit === 0
                 ? 'No panels purchased yet · '
                 : `${panelsLimit - panels.length} slot${panelsLimit - panels.length !== 1 ? 's' : ''} available · `}
@@ -394,13 +394,13 @@ const Dashboard = () => {
           {/* ── Buy banner ── */}
           <div
             onClick={() => navigate('/pricing')}
-            style={{ background: '#0d0d1a', border: '1px solid rgba(0,230,118,0.12)', borderRadius: 18, padding: '16px 18px', position: 'relative', overflow: 'hidden', cursor: 'pointer' }}
+            style={{ background: '#111122', border: '1px solid rgba(0,230,118,0.18)', borderRadius: 18, padding: '16px 18px', position: 'relative', overflow: 'hidden', cursor: 'pointer' }}
           >
             <HexPattern />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: '#fff' }}>Deploy a panel</div>
-                <div style={{ fontSize: 12, color: '#444', marginTop: 5 }}>
+                <div style={{ fontSize: 12, color: '#8b95b0', marginTop: 5 }}>
                   From <span style={{ color: '#00e676', fontWeight: 700 }}>₦1,400/mo</span> · Node.js & Python
                 </div>
                 <div style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#00e676', color: '#000', fontWeight: 800, fontSize: 12, padding: '7px 14px', borderRadius: 8 }}>
@@ -412,62 +412,61 @@ const Dashboard = () => {
           </div>
 
           {/* ── Redeem code ── */}
-          <div style={{ background: '#0d0d1a', border: redeemFocused ? '1px solid rgba(0,230,118,0.3)' : '1px solid #1a1a2e', borderRadius: 14, overflow: 'hidden', transition: 'border-color 0.2s' }}>
-            <div style={{ background: '#0a0a14', borderBottom: '1px solid #1a1a2e', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 5 }}>
-                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#ff4d4d' }} />
-                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#f0b429' }} />
-                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#00e676' }} />
-              </div>
-              <span style={{ flex: 1, textAlign: 'center', fontSize: 10, color: '#2a2a3a', letterSpacing: '0.08em' }}>redeem_code.sh</span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="#f0b429" opacity="0.5">
-                <path d="M6 0.5L7.3 4.2H11.3L8.1 6.6L9.3 10.3L6 7.9L2.7 10.3L3.9 6.6L0.7 4.2H4.7L6 0.5Z" />
-              </svg>
+          <div style={{ background: '#111122', border: redeemFocused ? '1px solid rgba(0,230,118,0.4)' : '1px solid #1e2040', borderRadius: 16, padding: '18px 18px', transition: 'border-color 0.2s' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <Gift size={16} color="#00e676" />
+              <span style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>Redeem a Code</span>
             </div>
-            <div style={{ padding: '14px 16px' }}>
-              <div style={{ fontSize: 11, color: '#2a2a3a', marginBottom: 8, fontFamily: 'monospace' }}>
-                <span style={{ color: '#00e676' }}>$</span> enter your redemption code
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#07070d', border: `1px solid ${redeemFocused ? 'rgba(0,230,118,0.3)' : '#1a1a2e'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 10, transition: 'border-color 0.2s' }}>
-                <span style={{ color: '#00e676', fontWeight: 700, fontFamily: 'monospace', flexShrink: 0 }}>&gt;_</span>
-                <input
-                  type="text"
-                  placeholder="IDEV-XXXX-XXXX"
-                  value={redeemCode}
-                  onChange={e => setRedeemCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
-                  onFocus={() => setRedeemFocused(true)}
-                  onBlur={() => setRedeemFocused(false)}
-                  onKeyDown={e => e.key === 'Enter' && handleRedeemCode()}
-                  maxLength={20}
-                  spellCheck={false}
-                  autoCapitalize="characters"
-                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13, letterSpacing: '0.18em', color: '#fff', caretColor: '#00e676' }}
-                />
-                {redeemCode && (
-                  <button onClick={() => setRedeemCode('')} style={{ color: '#333', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'monospace', fontSize: 11 }}>✕</button>
-                )}
-              </div>
-              <button
-                onClick={handleRedeemCode}
-                disabled={redeeming || !redeemCode.trim()}
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="IDEV-XXXX-XXXX"
+                value={redeemCode}
+                onChange={e => setRedeemCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+                onFocus={() => setRedeemFocused(true)}
+                onBlur={() => setRedeemFocused(false)}
+                onKeyDown={e => e.key === 'Enter' && handleRedeemCode()}
+                maxLength={20}
+                spellCheck={false}
+                autoCapitalize="characters"
                 style={{
-                  width: '100%', padding: '10px', borderRadius: 8, fontWeight: 700, fontSize: 12,
-                  cursor: redeemCode.trim() && !redeeming ? 'pointer' : 'not-allowed',
-                  letterSpacing: '0.1em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: redeemCode.trim() && !redeeming ? 'rgba(0,230,118,0.12)' : 'rgba(255,255,255,0.03)',
-                  border: redeemCode.trim() && !redeeming ? '1px solid rgba(0,230,118,0.3)' : '1px solid #1a1a2e',
-                  color: redeemCode.trim() && !redeeming ? '#00e676' : '#333',
-                  transition: 'all 0.2s',
+                  width: '100%', boxSizing: 'border-box',
+                  background: '#07070d', border: `1px solid ${redeemFocused ? 'rgba(0,230,118,0.4)' : '#1e2040'}`,
+                  borderRadius: 10, padding: '12px 40px 12px 14px',
+                  fontFamily: 'monospace', fontSize: 14, letterSpacing: '0.12em',
+                  color: '#fff', caretColor: '#00e676', outline: 'none',
+                  transition: 'border-color 0.2s',
                 }}
-              >
-                {redeeming ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Verifying…</> : <><Gift size={13} /> REDEEM CODE</>}
-              </button>
+              />
+              {redeemCode && (
+                <button
+                  onClick={() => setRedeemCode('')}
+                  style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#6b7a99', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+                >
+                  ✕
+                </button>
+              )}
             </div>
+            <button
+              onClick={handleRedeemCode}
+              disabled={redeeming || !redeemCode.trim()}
+              style={{
+                width: '100%', padding: '11px', borderRadius: 10, fontWeight: 700, fontSize: 13,
+                cursor: redeemCode.trim() && !redeeming ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: redeemCode.trim() && !redeeming ? '#00e676' : '#1e2040',
+                border: 'none',
+                color: redeemCode.trim() && !redeeming ? '#000' : '#6b7a99',
+                transition: 'all 0.2s',
+              }}
+            >
+              {redeeming ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Verifying…</> : <><Gift size={14} /> Redeem Code</>}
+            </button>
           </div>
 
           {/* ── Panels header ── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: '#2a2a3a', letterSpacing: '0.12em', fontWeight: 700 }}>YOUR PANELS</span>
+            <span style={{ fontSize: 10, color: '#6b7a99', letterSpacing: '0.12em', fontWeight: 700 }}>YOUR PANELS</span>
             {canCreatePanel && (
               <button
                 onClick={() => setShowCreateDialog(true)}
@@ -491,7 +490,7 @@ const Dashboard = () => {
               </svg>
               <div>
                 <p style={{ fontWeight: 700, color: '#fff', marginBottom: 6 }}>No panels yet</p>
-                <p style={{ fontSize: 13, color: '#333', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, color: '#8b95b0', marginBottom: 16 }}>
                   {isPremium ? 'Create your first panel to start hosting' : 'Purchase a plan to get started'}
                 </p>
                 <button
@@ -515,7 +514,7 @@ const Dashboard = () => {
               const statusColor =
                 panel.status === 'running' ? '#00e676' :
                 panel.status === 'deploying' ? '#f0b429' :
-                panel.status === 'error' ? '#ff4d4d' : '#1e1e2e';
+                panel.status === 'error' ? '#ff4d4d' : '#4a5570';
               const statusLabel =
                 panel.status === 'running' ? 'ONLINE' :
                 panel.status === 'deploying' ? 'DEPLOYING' :
@@ -532,15 +531,15 @@ const Dashboard = () => {
                 <div
                   key={panel.id}
                   onClick={() => handlePanelClick(panel)}
-                  style={{ background: '#0d0d1a', border: `1px solid ${statusColor}1a`, borderRadius: 14, padding: '13px 14px 13px 17px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', overflow: 'hidden' }}
+                  style={{ background: '#111122', border: `1px solid ${statusColor}25`, borderRadius: 14, padding: '13px 14px 13px 17px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', overflow: 'hidden' }}
                 >
                   {/* Left accent strip */}
                   <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: statusColor, boxShadow: glow }} />
 
                   {/* Lang icon */}
                   {needsSetup ? (
-                    <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px dashed #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <span style={{ fontSize: 18, color: '#333' }}>?</span>
+                    <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(0,176,255,0.06)', border: '1px dashed rgba(0,176,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 18, color: '#6b7a99' }}>?</span>
                     </div>
                   ) : (
                     <div style={{ width: 42, height: 42, borderRadius: 12, background: langBg, border: `1px solid ${langBorder}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -558,7 +557,7 @@ const Dashboard = () => {
                     <div style={{ fontWeight: 600, color: needsSetup ? '#00b0ff' : '#fff', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {needsSetup ? 'Tap to configure →' : panel.name}
                     </div>
-                    <div style={{ fontSize: 11, color: '#2a2a3a', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 11, color: '#6b7a99', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {isExpired ? (
                         <span style={{ color: '#ff4d4d', display: 'flex', alignItems: 'center', gap: 3 }}>
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#ff4d4d" strokeWidth="1"/><path d="M5 3v2.5" stroke="#ff4d4d" strokeWidth="1" strokeLinecap="round"/><circle cx="5" cy="7" r="0.5" fill="#ff4d4d"/></svg>
@@ -582,7 +581,7 @@ const Dashboard = () => {
                     </div>
                   )}
 
-                  <ChevronRight size={14} color="#1e1e2e" />
+                  <ChevronRight size={14} color="#4a5570" />
                 </div>
               );
             })}
@@ -590,19 +589,19 @@ const Dashboard = () => {
 
           {/* ── Slots full note ── */}
           {panels.length > 0 && panels.length >= panelsLimit && panelsLimit > 0 && (
-            <div style={{ textAlign: 'center', fontSize: 11, fontFamily: 'monospace', color: '#2a2a3a' }}>
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#6b7a99' }}>
               All {panelsLimit} slots used ·{' '}
               <span onClick={() => navigate('/pricing')} style={{ color: '#00e676', cursor: 'pointer' }}>buy more →</span>
             </div>
           )}
 
-          {/* ── Terminal footer ── */}
-          <div style={{ background: '#0d0d1a', border: '1px solid #1a1a2e', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* ── Footer ── */}
+          <div style={{ background: '#111122', border: '1px solid #1e2040', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
               <polyline points="1,3 5,6 1,9" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               <line x1="6" y1="9" x2="11" y2="9" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#2a2a3a' }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#6b7a99' }}>
               <span style={{ color: '#00e676' }}>{username}</span>
               {' · '}{panels.length}/{panelsLimit || '—'} panels{' · '}
               {runningCount > 0 && <span style={{ color: '#00e676' }}>{runningCount} running · </span>}
