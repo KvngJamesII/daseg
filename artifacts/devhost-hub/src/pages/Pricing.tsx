@@ -146,6 +146,12 @@ const Pricing = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Auto-swipe refs — all refs to avoid stale closures and unnecessary re-renders
+  const activeIndexRef = useRef(1);
+  const autoSwipeActive = useRef(true);   // armed on mount, killed on first interaction
+  const autoSwipeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialDelayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const ref = searchParams.get('reference') || searchParams.get('trxref');
     if (ref) verifyPayment(ref);
@@ -194,8 +200,46 @@ const Pricing = () => {
       const targetLeft = card.offsetLeft + card.offsetWidth / 2 - el.clientWidth / 2;
       el.scrollTo({ left: targetLeft, behavior: 'smooth' });
     }
+    activeIndexRef.current = clamped;
     setActiveIndex(clamped);
   };
+
+  // Kill auto-swipe permanently on any user interaction
+  const killAutoSwipe = () => {
+    if (!autoSwipeActive.current) return;
+    autoSwipeActive.current = false;
+    if (initialDelayTimer.current) { clearTimeout(initialDelayTimer.current); initialDelayTimer.current = null; }
+    if (autoSwipeTimer.current) { clearInterval(autoSwipeTimer.current); autoSwipeTimer.current = null; }
+  };
+
+  // Auto-swipe: 5s delay then every 3.5s, wraps around, stops on interaction
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    // Attach interaction listeners — any touch/click/wheel kills auto-swipe
+    const events: (keyof HTMLElementEventMap)[] = ['touchstart', 'mousedown', 'wheel', 'pointerdown'];
+    events.forEach(ev => el.addEventListener(ev, killAutoSwipe, { passive: true }));
+
+    // Initial 5s delay, then interval
+    initialDelayTimer.current = setTimeout(() => {
+      if (!autoSwipeActive.current) return;
+      autoSwipeTimer.current = setInterval(() => {
+        if (!autoSwipeActive.current) {
+          clearInterval(autoSwipeTimer.current!);
+          return;
+        }
+        const next = (activeIndexRef.current + 1) % PLANS.length;
+        scrollTo(next);
+      }, 3500);
+    }, 5000);
+
+    return () => {
+      events.forEach(ev => el.removeEventListener(ev, killAutoSwipe));
+      if (initialDelayTimer.current) clearTimeout(initialDelayTimer.current);
+      if (autoSwipeTimer.current) clearInterval(autoSwipeTimer.current);
+    };
+  }, []); // runs once on mount
 
   const verifyPayment = async (reference: string) => {
     setPurchasing('starter');
