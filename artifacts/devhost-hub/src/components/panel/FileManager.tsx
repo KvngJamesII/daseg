@@ -119,7 +119,7 @@ function FileBadge({ name, size = 16 }: { name: string; size?: number }) {
   const ext = dot ?? name.split('.').pop()?.toLowerCase() ?? '';
   const cfg = BADGE[ext];
   const h   = Math.round(size * 1.25);
-  const r   = Math.round(size * 0.32); // generous corner radius
+  const r   = Math.round(size * 0.32);
 
   if (!cfg) return <File style={{ width: size, height: size, color: '#6b7280', flexShrink: 0 }} />;
 
@@ -209,7 +209,6 @@ export function FileManager({ panelId }: FileManagerProps) {
   const [renaming, setRenaming]   = useState<PFile | null>(null);
   const [renameVal, setRenameVal] = useState('');
   const [hoveredPath, setHP]      = useState<string | null>(null);
-  const [lineCount, setLC]        = useState(1);
   const [col, setCol]             = useState(1);
 
   const editorRef  = useRef<HTMLTextAreaElement>(null);
@@ -221,13 +220,11 @@ export function FileManager({ panelId }: FileManagerProps) {
   const draftKey = (p: string) => `fm_${panelId}_${p}`;
   const isDirty  = code !== saved;
 
-  // inject hljs CSS once
   useEffect(() => { injectHljsCss(); }, []);
 
   useEffect(() => { fetchFiles(); }, [panelId, path]);
   useEffect(() => { if (createMode) setTimeout(() => newNameRef.current?.focus(), 30); }, [createMode]);
 
-  // Sync textarea scroll → pre
   const syncScroll = () => {
     if (editorRef.current && preRef.current) {
       preRef.current.scrollTop  = editorRef.current.scrollTop;
@@ -235,7 +232,6 @@ export function FileManager({ panelId }: FileManagerProps) {
     }
   };
 
-  // Syntax highlight (memoised — only recomputes when code/ext changes)
   const ext         = editing?.name.split('.').pop()?.toLowerCase() ?? '';
   const hljsLang    = EXT_LANG[ext];
   const highlighted = useMemo(() => {
@@ -266,7 +262,6 @@ export function FileManager({ panelId }: FileManagerProps) {
       const draft = localStorage.getItem(draftKey(f.path));
       const content = draft && draft !== r.content ? draft : r.content;
       setCode(content); setSaved(r.content); setEditing(f);
-      setLC(content.split('\n').length);
       if (draft && draft !== r.content) toast({ title: 'Draft restored', description: 'Unsaved changes loaded.' });
     } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
     setLF(null);
@@ -290,7 +285,7 @@ export function FileManager({ panelId }: FileManagerProps) {
   };
 
   const onCodeChange = (v: string) => {
-    setCode(v); setLC(v.split('\n').length);
+    setCode(v);
     if (editing) localStorage.setItem(draftKey(editing.path), v);
   };
 
@@ -375,13 +370,12 @@ export function FileManager({ panelId }: FileManagerProps) {
   const lang    = langName[ext] ?? 'Text';
   const langCfg = LANG_BADGE[ext];
 
-  /* shared text style for the editor (pre + textarea must match exactly) */
   const editorTextStyle: React.CSSProperties = {
     fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
     fontSize: 13.5,
     lineHeight: 1.65,
     tabSize: 2,
-    padding: '16px 20px 160px 14px', // extra bottom padding so last line isn't hidden
+    padding: '16px 20px 160px 14px',
     margin: 0,
     whiteSpace: 'pre',
     overflowWrap: 'normal',
@@ -477,7 +471,6 @@ export function FileManager({ panelId }: FileManagerProps) {
         {/* Highlighted pre + transparent textarea overlay */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
 
-          {/* Highlighted layer (read-only, behind textarea) */}
           <pre
             ref={preRef}
             aria-hidden
@@ -489,12 +482,11 @@ export function FileManager({ panelId }: FileManagerProps) {
             }}
             dangerouslySetInnerHTML={{
               __html: highlighted
-                ? highlighted + '\n' // trailing newline prevents jump
+                ? highlighted + '\n'
                 : (code + '\n').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
             }}
           />
 
-          {/* Editable textarea (transparent, on top) */}
           <textarea
             ref={editorRef}
             value={code}
@@ -520,15 +512,15 @@ export function FileManager({ panelId }: FileManagerProps) {
         </div>
       </div>
 
-      {/* Status bar */}
+      {/* Status bar — neutral dark, no language colour */}
       <div style={{
-        height: 26, background: langCfg ? langCfg.bg : '#161b22',
+        height: 26, background: '#161b22',
         display: 'flex', alignItems: 'center', paddingLeft: 14,
         gap: 20, flexShrink: 0, borderTop: '1px solid #21262d',
       }}>
-        <span style={{ fontSize: 11.5, color: langCfg?.fg ?? '#8b949e', fontFamily: 'monospace', fontWeight: 700 }}>{lang}</span>
-        <span style={{ fontSize: 11, color: langCfg?.fg ?? '#8b949e', fontFamily: 'monospace', opacity: 0.7 }}>Ln {code.split('\n').length}  Col {col}</span>
-        <span style={{ marginLeft: 'auto', paddingRight: 14, fontSize: 10.5, color: langCfg?.fg ?? '#8b949e', fontFamily: 'monospace', opacity: 0.5 }}>
+        <span style={{ fontSize: 11.5, color: '#6b7280', fontFamily: 'monospace', fontWeight: 700 }}>{lang}</span>
+        <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>Ln {code.split('\n').length}  Col {col}</span>
+        <span style={{ marginLeft: 'auto', paddingRight: 14, fontSize: 10.5, color: '#484f58', fontFamily: 'monospace' }}>
           Ctrl+S · save    Tab · indent
         </span>
       </div>

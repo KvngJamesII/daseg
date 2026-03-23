@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { vmApi } from '@/lib/vmApi';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
+import { Loader2, ChevronDown, Pause, Play } from 'lucide-react';
 
 interface UnifiedConsoleProps {
   panelId: string;
@@ -220,22 +220,18 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button
             onClick={e => { e.stopPropagation(); setLive(!live); }}
-            style={{ padding: '3px 9px', borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: live ? '#3fb950' : '#8b949e', fontSize: 10, cursor: 'pointer', letterSpacing: 0.2 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 5, border: `1px solid ${live ? '#238636' : '#30363d'}`, background: live ? 'rgba(35,134,54,0.12)' : 'transparent', color: live ? '#3fb950' : '#8b949e', fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}
           >
-            {live ? '● LIVE' : '○ PAUSED'}
+            {live
+              ? <><Pause style={{ width: 9, height: 9 }} /> Pause</>
+              : <><Play  style={{ width: 9, height: 9 }} /> Resume</>
+            }
           </button>
           <button
-            onClick={e => { e.stopPropagation(); fetchLogs(); }}
-            disabled={panelStatus !== 'running'}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', cursor: 'pointer' }}
+            onClick={e => { e.stopPropagation(); setLines([]); }}
+            style={{ padding: '3px 9px', borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}
           >
-            <RefreshCw style={{ width: 11, height: 11, animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); clear(); }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', cursor: 'pointer' }}
-          >
-            <Trash2 style={{ width: 11, height: 11 }} />
+            Clear
           </button>
         </div>
       </div>
