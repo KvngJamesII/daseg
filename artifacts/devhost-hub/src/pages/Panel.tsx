@@ -436,7 +436,14 @@ const PanelPage = () => {
           </div>
         )}
 
-        {activeTab === 'terminal' && <InteractiveTerminal panelId={panel.id} />}
+        {activeTab === 'terminal' && (
+          <InteractiveTerminal
+            panelId={panel.id}
+            isRunning={isRunning}
+            onStart={handleStart}
+            actionLoading={actionLoading}
+          />
+        )}
         {activeTab === 'files' && <FileManager panelId={panel.id} />}
         {activeTab === 'startup' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>

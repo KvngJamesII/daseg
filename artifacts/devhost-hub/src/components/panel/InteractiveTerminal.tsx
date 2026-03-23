@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, ChevronDown, Square, RotateCcw } from 'lucide-react';
+import { Loader2, ChevronDown, Square, RotateCcw, Play } from 'lucide-react';
 
-interface Props { panelId: string; }
+interface Props {
+  panelId: string;
+  isRunning?: boolean;
+  onStart?: () => void;
+  actionLoading?: boolean;
+}
 
 /* ── ANSI strip ────────────────────────────────────────────────── */
 const stripAnsi = (s: string) =>
@@ -44,7 +49,7 @@ async function exec(panelId: string, command: string): Promise<{ ok: boolean; ou
 }
 
 /* ════════════════════════════════════════════════════════════════ */
-export function InteractiveTerminal({ panelId }: Props) {
+export function InteractiveTerminal({ panelId, isRunning = false, onStart, actionLoading = false }: Props) {
   const sid = `pt${panelId.replace(/-/g, '').slice(0, 12)}`;
 
   const [output, setOutput]     = useState<string[]>([]);
@@ -170,8 +175,18 @@ export function InteractiveTerminal({ panelId }: Props) {
     }
   }, [panelId, sid, atBottom]);
 
-  /* ── Lifecycle ── */
-  useEffect(() => { initSession(); return () => { if (pollRef.current) clearInterval(pollRef.current); }; }, [panelId]);
+  /* ── Lifecycle: init when panelId changes OR panel becomes running ── */
+  useEffect(() => {
+    if (!isRunning) {
+      // Panel not running — clear any existing poll and session
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      readyRef.current = false;
+      setReady(false);
+      return;
+    }
+    initSession();
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [panelId, isRunning]);
 
   /* ── Auto-scroll ── */
   useEffect(() => {
@@ -236,6 +251,36 @@ export function InteractiveTerminal({ panelId }: Props) {
   };
 
   /* ══════════════════ RENDER ══════════════════════════════════ */
+
+  /* Gate: panel must be running */
+  if (!isRunning) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, gap: 16, padding: 32 }}>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#1a1f2e', border: `1px solid ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ color: '#e6edf3', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Terminal requires a running panel</div>
+          <div style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6 }}>
+            Start your panel to open a live shell session<br />inside its container environment.
+          </div>
+        </div>
+        <button
+          onClick={onStart}
+          disabled={actionLoading || !onStart}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 8, border: 'none', background: GREEN, color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: actionLoading ? 0.6 : 1 }}
+        >
+          {actionLoading
+            ? <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />
+            : <Play style={{ width: 13, height: 13 }} />}
+          {actionLoading ? 'Starting…' : 'Start Panel'}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{ flex: 1, display: 'flex', flexDirection: 'column', background: BG, fontFamily: '"JetBrains Mono","Fira Code","Consolas",monospace', minHeight: 0 }}
