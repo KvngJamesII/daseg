@@ -272,6 +272,7 @@ const Pricing = () => {
           email: user.email,
           amount: plan.priceKobo,
           user_id: user.id,
+          plan_id: plan.id,
           callback_url: `${window.location.origin}/pricing`,
           panels_count: 1,
           duration_months: 1,
