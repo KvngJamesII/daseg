@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { vmApi } from '@/lib/vmApi';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, ChevronDown, Pause, Play, ArrowRight } from 'lucide-react';
+import { Loader2, ChevronDown, Pause, Play } from 'lucide-react';
 
 interface UnifiedConsoleProps {
   panelId: string;
@@ -21,6 +21,7 @@ const cleanRaw = (s: string) =>
   s.replace(/\x1b\[[0-9;]*[mGKHF]/g, '')
    .replace(/\[\d+m/g, '')
    .replace(/^\d+\|panel-[a-z0-9-]+\s*\|\s*/i, '')
+   .replace(/^\d+\|panel\s*\|\s*/i, '')
    .trim();
 
 const isNoise = (s: string) =>
@@ -36,22 +37,23 @@ const lineColor = (k: Line['kind']) => ({
 }[k] ?? '#d1d5db');
 
 export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', language = 'python' }: UnifiedConsoleProps) {
-  const [lines, setLines]         = useState<Line[]>([]);
-  const [input, setInput]         = useState('');
-  const [running, setRunning]     = useState(false);
-  const [live, setLive]           = useState(true);
-  const [loading, setLoading]     = useState(false);
-  const [history, setHistory]     = useState<string[]>([]);
-  const [histIdx, setHistIdx]     = useState(-1);
-  const [histBuf, setHistBuf]     = useState('');
-  const [atBottom, setAtBottom]   = useState(true);
-  const [stdinMode, setStdinMode] = useState(false);
+  const [lines, setLines]     = useState<Line[]>([]);
+  const [input, setInput]     = useState('');
+  const [running, setRunning] = useState(false);
+  const [live, setLive]       = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<string[]>([]);
+  const [histIdx, setHistIdx] = useState(-1);
+  const [histBuf, setHistBuf] = useState('');
+  const [atBottom, setAtBottom] = useState(true);
 
   const isRunning = panelStatus === 'running';
-  const runner = language === 'python' ? 'python3' : 'node';
 
-  const bodyRef  = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const bodyRef        = useRef<HTMLDivElement>(null);
+  const inputRef       = useRef<HTMLInputElement>(null);
+  // When we exec a piped command we suppress live PM2 log fetches for a
+  // window so the PM2-restarted process doesn't re-echo the same output.
+  const suppressUntil  = useRef<number>(0);
 
   const push = (kind: Line['kind'], text: string) =>
     setLines(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, kind, text, ts: Date.now() }]);
@@ -83,6 +85,9 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
 
   /* ── App logs (PM2) ── */
   const fetchLogs = async () => {
+    // Suppress fetches for a window after a stdin exec to avoid
+    // PM2 restart output appearing as duplicates
+    if (Date.now() < suppressUntil.current) return;
     if (panelStatus !== 'running') return;
     setLoading(true);
     try {
@@ -139,7 +144,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
   };
 
-  /* ── Command / stdin execution ── */
+  /* ── Command execution ── */
   const exec = async (cmd: string) => {
     const trimmed = cmd.trim();
     if (!trimmed) return;
@@ -150,10 +155,12 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
     setInput('');
     setAtBottom(true);
 
-    /* ── Stdin mode: pipe input to script ── */
-    if (stdinMode) {
+    /* ── Running mode: always pipe input to the script ── */
+    if (isRunning) {
+      // Suppress live PM2 log fetches for 8 s to avoid echoed output
+      suppressUntil.current = Date.now() + 8000;
       setRunning(true);
-      // Try python3 first, then python
+
       const escapedInput = trimmed.replace(/"/g, '\\"');
       const runners = language === 'python' ? ['python3', 'python'] : ['node'];
       let succeeded = false;
@@ -174,7 +181,6 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
       }
 
       if (!succeeded) {
-        // Both failed — try running the script without piped stdin as a sanity check
         push('err', 'Pipe failed. Trying without stdin…');
         try {
           const res = await vmApi.exec(panelId, `${runners[0]} ${entryPoint}`);
@@ -191,11 +197,10 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
       return;
     }
 
-    /* ── Shell command mode ── */
+    /* ── Stopped mode: run as shell command ── */
     if (trimmed === 'clear') { setLines([]); return; }
     if (trimmed === 'help') {
-      push('out', `Commands: ls, cat ${entryPoint}, pip install <pkg>, ${runner} --version, clear`);
-      push('info', `Toggle "→ stdin" to pipe your answer directly to ${runner} ${entryPoint}`);
+      push('out', 'Commands: ls, cat main.py, pip install <pkg>, python3 --version, clear');
       return;
     }
 
@@ -210,7 +215,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
       const msg = e.message || '';
       if (msg.includes('non-2xx') || msg.includes('Edge Function')) {
         push('err', 'Command failed — the server rejected the request.');
-        push('sys', 'Make sure your command is valid bash. Example: ls, cat main.py, python --version');
+        push('sys', 'Make sure your command is valid bash. Example: ls, cat main.py, python3 --version');
       } else {
         push('err', `Error: ${msg}`);
       }
@@ -237,15 +242,18 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
     }
   };
 
-  const clear = async () => {
-    try { await vmApi.clearLogs(panelId); await supabase.from('panel_logs').delete().eq('panel_id', panelId); } catch { }
-    setLines([]);
-  };
-
   const scrollToBottom = () => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     setAtBottom(true);
   };
+
+  const promptChar = isRunning ? '→' : '$';
+  const promptColor = isRunning ? '#f0a726' : '#3fb950';
+  const inputPlaceholder = running
+    ? ''
+    : isRunning
+      ? `type your answer… (→ pipes to ${entryPoint})`
+      : 'type a command…';
 
   return (
     <div
@@ -261,22 +269,11 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: live ? '#27c93f' : '#444' }} />
           </div>
           <span style={{ fontSize: 11, color: '#8b949e', letterSpacing: 0.3 }}>
-            panel — bash
+            panel — {isRunning ? `stdin → ${entryPoint}` : 'bash'}
           </span>
           {loading && <Loader2 style={{ width: 11, height: 11, color: '#58a6ff', animation: 'spin 1s linear infinite' }} />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Stdin mode toggle — only when running */}
-          {isRunning && (
-            <button
-              onClick={e => { e.stopPropagation(); setStdinMode(s => !s); }}
-              title={stdinMode ? 'Switch to shell mode' : `Pipe input to ${runner} ${entryPoint}`}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 5, border: `1px solid ${stdinMode ? '#f0a726' : '#30363d'}`, background: stdinMode ? 'rgba(240,167,38,0.12)' : 'transparent', color: stdinMode ? '#f0a726' : '#8b949e', fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}
-            >
-              <ArrowRight style={{ width: 9, height: 9 }} />
-              {stdinMode ? 'stdin' : '→ stdin'}
-            </button>
-          )}
           <button
             onClick={e => { e.stopPropagation(); setLive(!live); }}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 5, border: `1px solid ${live ? '#238636' : '#30363d'}`, background: live ? 'rgba(35,134,54,0.12)' : 'transparent', color: live ? '#3fb950' : '#8b949e', fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}
@@ -314,10 +311,9 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
             {line.text}
           </div>
         ))}
-        {/* running indicator */}
         {running && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 4 }}>
-            <Loader2 style={{ width: 11, height: 11, color: '#3fb950', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+            <Loader2 style={{ width: 11, height: 11, color: promptColor, animation: 'spin 1s linear infinite', flexShrink: 0 }} />
             <span style={{ fontSize: 11, color: '#484f58' }}>running…</span>
           </div>
         )}
@@ -335,26 +331,21 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
 
       {/* Input row */}
       <div style={{ flexShrink: 0, borderTop: '1px solid #21262d', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8, background: '#161b22' }}>
-        <span style={{ color: stdinMode ? '#f0a726' : '#3fb950', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-          {stdinMode ? '→' : '$'}
+        <span style={{ color: promptColor, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+          {promptChar}
         </span>
         <input
           ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={
-            running ? '' :
-            stdinMode ? `type your answer… (pipes to ${runner} ${entryPoint})` :
-            isRunning ? 'shell command — or click → stdin to send app input' :
-            'type a command…'
-          }
+          placeholder={inputPlaceholder}
           disabled={running}
           autoComplete="off"
           spellCheck={false}
-          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#e6edf3', fontFamily: 'inherit', caretColor: stdinMode ? '#f0a726' : '#3fb950' }}
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#e6edf3', fontFamily: 'inherit', caretColor: promptColor }}
         />
-        {running && <Loader2 style={{ width: 13, height: 13, color: stdinMode ? '#f0a726' : '#3fb950', flexShrink: 0, animation: 'spin 1s linear infinite' }} />}
+        {running && <Loader2 style={{ width: 13, height: 13, color: promptColor, flexShrink: 0, animation: 'spin 1s linear infinite' }} />}
       </div>
     </div>
   );
