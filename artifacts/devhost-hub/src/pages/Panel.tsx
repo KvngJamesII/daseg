@@ -40,6 +40,9 @@ interface Panel {
   created_at: string;
   entry_point?: string | null;
   expires_at?: string | null;
+  ram_mb?: number | null;
+  cpu_cores?: number | null;
+  storage_mb?: number | null;
 }
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -416,8 +419,8 @@ const PanelPage = () => {
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, opacity: isRunning ? 1 : 0.45 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <MetCard label="CPU"      value={isRunning ? `${vmStatus?.cpu?.toFixed(1) ?? 0}%` : '—'}     sub="of vCPU"   color={BLUE}  pct={isRunning ? (vmStatus?.cpu ?? 0) : 0}                         icon={Cpu} />
-                  <MetCard label="RAM"      value={isRunning ? `${memMB.toFixed(0)} MB` : '—'}                  sub="of 512 MB" color={GREEN} pct={isRunning ? (memMB / 512) * 100 : 0}                         icon={MemoryStick} />
+                  <MetCard label="CPU"      value={isRunning ? `${vmStatus?.cpu?.toFixed(1) ?? 0}%` : '—'}     sub={`of ${panel?.cpu_cores ?? 0.5} vCPU`}                    color={BLUE}  pct={isRunning ? (vmStatus?.cpu ?? 0) : 0}                                            icon={Cpu} />
+                  <MetCard label="RAM"      value={isRunning ? `${memMB.toFixed(0)} MB` : '—'}                  sub={`of ${panel?.ram_mb ?? 512} MB`}                          color={GREEN} pct={isRunning ? (memMB / (panel?.ram_mb ?? 512)) * 100 : 0}                        icon={MemoryStick} />
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <MetCard label="Uptime"   value={isRunning ? formatUptime(liveUptime) : '—'}                  sub={isRunning ? 'running' : 'offline'}    color={GREEN} pct={isRunning ? 100 : 0}               icon={Clock} />

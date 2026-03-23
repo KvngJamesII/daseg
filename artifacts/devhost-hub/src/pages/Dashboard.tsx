@@ -226,6 +226,9 @@ const Dashboard = () => {
         await supabase.from('panels').insert({
           user_id: user.id, name: `ClaimedPanel_${Date.now()}_${i}`,
           language: 'nodejs', expires_at: expiresAt.toISOString(),
+          ram_mb: (codeData as any).ram_mb ?? 512,
+          cpu_cores: (codeData as any).cpu_cores ?? 0.5,
+          storage_mb: (codeData as any).storage_mb ?? 1024,
         });
       }
       toast({ title: 'Code Redeemed!', description: `${codeData.panels_granted} panel(s) unlocked!` });

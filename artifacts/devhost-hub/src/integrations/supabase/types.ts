@@ -119,37 +119,46 @@ export type Database = {
       panels: {
         Row: {
           created_at: string
+          cpu_cores: number
           droplet_id: string | null
           entry_point: string | null
           expires_at: string | null
           id: string
           language: Database["public"]["Enums"]["panel_language"]
           name: string
+          ram_mb: number
           status: Database["public"]["Enums"]["panel_status"]
+          storage_mb: number
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          cpu_cores?: number
           droplet_id?: string | null
           entry_point?: string | null
           expires_at?: string | null
           id?: string
           language: Database["public"]["Enums"]["panel_language"]
           name: string
+          ram_mb?: number
           status?: Database["public"]["Enums"]["panel_status"]
+          storage_mb?: number
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          cpu_cores?: number
           droplet_id?: string | null
           entry_point?: string | null
           expires_at?: string | null
           id?: string
           language?: Database["public"]["Enums"]["panel_language"]
           name?: string
+          ram_mb?: number
           status?: Database["public"]["Enums"]["panel_status"]
+          storage_mb?: number
           updated_at?: string
           user_id?: string
         }
@@ -278,6 +287,7 @@ export type Database = {
       redeem_codes: {
         Row: {
           code: string
+          cpu_cores: number
           created_at: string
           created_by: string
           current_uses: number
@@ -287,9 +297,12 @@ export type Database = {
           is_active: boolean
           max_uses: number | null
           panels_granted: number
+          ram_mb: number
+          storage_mb: number
         }
         Insert: {
           code: string
+          cpu_cores?: number
           created_at?: string
           created_by: string
           current_uses?: number
@@ -299,9 +312,12 @@ export type Database = {
           is_active?: boolean
           max_uses?: number | null
           panels_granted?: number
+          ram_mb?: number
+          storage_mb?: number
         }
         Update: {
           code?: string
+          cpu_cores?: number
           created_at?: string
           created_by?: string
           current_uses?: number
@@ -311,6 +327,8 @@ export type Database = {
           is_active?: boolean
           max_uses?: number | null
           panels_granted?: number
+          ram_mb?: number
+          storage_mb?: number
         }
         Relationships: []
       }

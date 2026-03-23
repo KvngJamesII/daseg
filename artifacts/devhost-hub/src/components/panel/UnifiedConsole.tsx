@@ -77,6 +77,9 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
   const suppressUntil   = useRef<number>(0);
   const prevStatus      = useRef<string>('');
   const lastPanelId     = useRef<string>('');
+  // Incremental log append: track the last raw out/err so we only add new lines
+  const lastRawOut      = useRef<string>('');
+  const lastRawErr      = useRef<string>('');
   // Interactive session: replay all answers each run, show only new output
   const sessionAnswers  = useRef<string[]>([]);
   const sessionShown    = useRef<number>(0);   // output lines already displayed
@@ -109,34 +112,66 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
     return () => { supabase.removeChannel(ch); };
   }, [panelId]);
 
-  /* ── App logs (PM2) ── */
-  const fetchLogs = async (force = false) => {
-    // Suppress fetches for a window after a stdin exec to avoid
-    // PM2 restart output appearing as duplicates
+  /* ── App logs (PM2) — incremental append ── */
+  const fetchLogs = async (force = false): Promise<void> => {
     if (!force && Date.now() < suppressUntil.current) return;
     if (!force && panelStatus !== 'running') return;
     setLoading(true);
     try {
-      const res = await vmApi.getLogs(panelId, 150);
-      const now = Date.now();
-      const out: Line[] = [];
-      const processStr = (s: string, kind: Line['kind']) =>
-        s.split('\n').map(cleanRaw).filter(l => l && !isNoise(l))
-          .forEach(text => out.push({ id: `${kind}-${now}-${Math.random()}`, kind, text, ts: now }));
-      if (res.logs?.out) processStr(res.logs.out, 'log');
-      if (res.logs?.err) {
-        res.logs.err.split('\n').map(cleanRaw).filter(l => l && !isNoise(l)).forEach(text => {
-          const u = text.toUpperCase();
-          const k: Line['kind'] = (u.includes('ERROR') || u.includes('TRACEBACK') || u.includes('EXCEPTION')) ? 'err' : 'log';
-          out.push({ id: `err-${now}-${Math.random()}`, kind: k, text, ts: now });
-        });
+      const res = await vmApi.getLogs(panelId, 200);
+      const rawOut = res.logs?.out ?? '';
+      const rawErr = res.logs?.err ?? '';
+
+      // Nothing changed — skip re-render entirely
+      if (!force && rawOut === lastRawOut.current && rawErr === lastRawErr.current) {
+        setLoading(false);
+        return;
       }
-      // Strip KeyboardInterrupt traceback blocks (expected PM2 kill noise)
-      const cleaned = stripKeyboardInterrupt(out);
+
+      const now = Date.now();
+      const parseLines = (raw: string, prev: string, defaultKind: Line['kind']): Line[] => {
+        // If new raw starts with old raw, only parse the new suffix (append-only)
+        const slice = (!force && raw.startsWith(prev) && prev.length > 0)
+          ? raw.slice(prev.length)
+          : raw;
+        const lines: Line[] = [];
+        slice.split('\n').map(cleanRaw).filter(l => l && !isNoise(l)).forEach(text => {
+          lines.push({ id: `${defaultKind}-${now}-${Math.random()}`, kind: defaultKind, text, ts: now });
+        });
+        return lines;
+      };
+
+      const outLines = parseLines(rawOut, lastRawOut.current, 'log');
+      const errLines: Line[] = [];
+      parseLines(rawErr, lastRawErr.current, 'err').forEach(l => {
+        const u = l.text.toUpperCase();
+        errLines.push({ ...l, kind: (u.includes('ERROR') || u.includes('TRACEBACK') || u.includes('EXCEPTION')) ? 'err' : 'log' });
+      });
+
+      const newPm2Lines = stripKeyboardInterrupt([...outLines, ...errLines]);
+
+      const isAppendOnly =
+        rawOut.startsWith(lastRawOut.current) &&
+        rawErr.startsWith(lastRawErr.current) &&
+        !force;
+
+      lastRawOut.current = rawOut;
+      lastRawErr.current = rawErr;
+
+      if (newPm2Lines.length === 0) {
+        setLoading(false);
+        return;
+      }
+
       setLines(prev => {
+        if (isAppendOnly) {
+          // Just append new lines, preserving everything already shown
+          return [...prev.filter(l => l.id !== 'idle'), ...newPm2Lines];
+        }
+        // Full replace (forced fetch or log rotation)
         const sysLines = prev.filter(l => l.kind === 'sys' || l.kind === 'info');
-        const cmdLines = prev.filter(l => l.kind === 'cmd' || l.kind === 'out' || l.kind === 'err' && l.id.startsWith('cmd-'));
-        return [...sysLines, ...cleaned, ...cmdLines].sort((a, b) => a.ts - b.ts);
+        const cmdLines = prev.filter(l => l.kind === 'cmd' || l.kind === 'out' || (l.kind === 'err' && l.id.startsWith('cmd-')));
+        return [...sysLines, ...newPm2Lines, ...cmdLines].sort((a, b) => a.ts - b.ts);
       });
     } catch { }
     setLoading(false);
@@ -155,9 +190,11 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
       prevStatus.current = 'running';
 
       if (!wasRunning) {
-        // Real start/restart transition — wipe old output
+        // Real start/restart transition — wipe old output and log cache
         setLines([]);
         suppressUntil.current = 0;
+        lastRawOut.current = '';
+        lastRawErr.current = '';
         vmApi.clearLogs(panelId).catch(() => {});
         setTimeout(fetchLogs, 2000);
       } else {
@@ -180,6 +217,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
         });
       } else {
         setLines(prev => {
+          if (prev.some(l => l.id === 'idle')) return prev;
           const sysLines = prev.filter(l => l.kind === 'sys' || l.kind === 'info');
           return [...sysLines, { id: 'idle', kind: 'sys', text: '[SYSTEM] Panel is not running. Press Start to launch your app.', ts: Date.now() }];
         });
@@ -189,7 +227,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
 
   useEffect(() => {
     if (!live || panelStatus !== 'running') return;
-    const t = setInterval(fetchLogs, 3000);
+    const t = setInterval(fetchLogs, 1000);
     return () => clearInterval(t);
   }, [live, panelStatus, panelId]);
 
