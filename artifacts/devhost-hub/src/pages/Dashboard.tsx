@@ -2,24 +2,19 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import {
-  Server,
   Plus,
   LogOut,
   Shield,
   Loader2,
   AlertCircle,
-  Terminal,
-  Activity,
   ChevronRight,
   Gift,
   ShoppingCart,
   Clock,
-  Zap,
-  CornerDownRight,
   RefreshCw,
+  Terminal,
 } from 'lucide-react';
 import { CreatePanelDialog } from '@/components/CreatePanelDialog';
 import {
@@ -31,7 +26,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
+/* ─── Types ─────────────────────────────────────────────────────────── */
 interface Panel {
   id: string;
   name: string;
@@ -40,30 +37,77 @@ interface Panel {
   created_at: string;
   expires_at: string | null;
 }
-
 interface SetupPanelData {
   id: string;
   name: string;
   language: 'nodejs' | 'python';
 }
 
+/* ─── Helpers ────────────────────────────────────────────────────────── */
 function getInitials(str: string) {
   return str?.slice(0, 2).toUpperCase() || 'U?';
 }
-
 function daysLeft(expires_at: string | null) {
   if (!expires_at) return null;
-  const diff = new Date(expires_at).getTime() - Date.now();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return Math.ceil((new Date(expires_at).getTime() - Date.now()) / 86400000);
 }
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+/* ─── SVG decorations ────────────────────────────────────────────────── */
+function Sparkline({ color }: { color: string }) {
+  return (
+    <svg width="44" height="18" viewBox="0 0 44 18" fill="none">
+      <polyline
+        points="0,14 7,10 14,6 22,11 30,3 37,7 44,4"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
+function ServerRackSVG() {
+  return (
+    <svg width="76" height="76" viewBox="0 0 76 76" fill="none" opacity="0.18" className="shrink-0">
+      {[0, 1, 2, 3].map((i) => (
+        <g key={i} transform={`translate(8,${6 + i * 16})`}>
+          <rect x="0" y="0" width="60" height="11" rx="2" fill="#00e676" />
+          <rect x="3" y="2.5" width="4" height="6" rx="1" fill="#07070d" />
+          <rect x="9" y="2.5" width="4" height="6" rx="1" fill="#07070d" />
+          <rect x="18" y="3.5" width="22" height="4" rx="1" fill="#07070d" opacity="0.6" />
+          <circle cx="54" cy="5.5" r="2.5" fill={i === 0 ? '#00e676' : i === 2 ? '#ff4d4d' : '#1a2a1a'} />
+        </g>
+      ))}
+      <rect x="8" y="70" width="60" height="3" rx="1.5" fill="#00e676" opacity="0.3" />
+    </svg>
+  );
+}
+
+function HexPattern() {
+  const hexPoints = (cx: number, cy: number, r: number) =>
+    Array.from({ length: 6 }, (_, i) => {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+    }).join(' ');
+  const positions: [number, number][] = [
+    [20, 14], [44, 14], [68, 14],
+    [32, 34], [56, 34], [80, 34],
+    [20, 54], [44, 54], [68, 54],
+  ];
+  return (
+    <svg
+      width="100" height="70" viewBox="0 0 100 70" fill="none"
+      style={{ position: 'absolute', right: 0, bottom: 0, opacity: 0.06, pointerEvents: 'none' }}
+    >
+      {positions.map(([cx, cy], i) => (
+        <polygon key={i} points={hexPoints(cx, cy, 10)} stroke="#00e676" strokeWidth="0.8" />
+      ))}
+    </svg>
+  );
+}
+
+/* ─── Main component ─────────────────────────────────────────────────── */
 const Dashboard = () => {
   const { user, profile, isAdmin, isPremium, signOut, loading: authLoading } = useAuth();
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -96,79 +140,58 @@ const Dashboard = () => {
       .select('*')
       .eq('user_id', user?.id)
       .order('created_at', { ascending: false });
-    if (error) {
-      toast({ title: 'Error', description: 'Failed to load panels', variant: 'destructive' });
-    } else {
-      setPanels(data as Panel[]);
-    }
+    if (error) toast({ title: 'Error', description: 'Failed to load panels', variant: 'destructive' });
+    else setPanels(data as Panel[]);
     setLoading(false);
     setRefreshing(false);
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
-  };
+  const handleSignOut = async () => { await signOut(); navigate('/'); };
 
   const handleRedeemCode = async () => {
     if (!redeemCode.trim() || !user) return;
     setRedeeming(true);
     try {
       const { data: codeData, error: codeError } = await supabase
-        .from('redeem_codes')
-        .select('*')
-        .eq('code', redeemCode.trim().toUpperCase())
-        .eq('is_active', true)
-        .maybeSingle();
-
+        .from('redeem_codes').select('*')
+        .eq('code', redeemCode.trim().toUpperCase()).eq('is_active', true).maybeSingle();
       if (codeError || !codeData) {
         toast({ title: 'Invalid Code', description: 'This code does not exist or is inactive', variant: 'destructive' });
-        setRedeeming(false);
-        return;
+        setRedeeming(false); return;
       }
       if (codeData.max_uses !== null && codeData.current_uses >= codeData.max_uses) {
         toast({ title: 'Code Expired', description: 'This code has reached its maximum uses', variant: 'destructive' });
-        setRedeeming(false);
-        return;
+        setRedeeming(false); return;
       }
       const { data: existingRedemption } = await supabase
-        .from('code_redemptions')
-        .select('id')
-        .eq('code_id', codeData.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
+        .from('code_redemptions').select('id')
+        .eq('code_id', codeData.id).eq('user_id', user.id).maybeSingle();
       if (existingRedemption) {
         toast({ title: 'Already Redeemed', description: 'You have already used this code', variant: 'destructive' });
-        setRedeeming(false);
-        return;
+        setRedeeming(false); return;
       }
       const { error: redemptionError } = await supabase
-        .from('code_redemptions')
-        .insert({ code_id: codeData.id, user_id: user.id });
+        .from('code_redemptions').insert({ code_id: codeData.id, user_id: user.id });
       if (redemptionError) {
         toast({ title: 'Error', description: 'Failed to redeem code', variant: 'destructive' });
-        setRedeeming(false);
-        return;
+        setRedeeming(false); return;
       }
       await supabase.from('redeem_codes').update({ current_uses: codeData.current_uses + 1 }).eq('id', codeData.id);
       const currentLimit = profile?.panels_limit || 0;
       await supabase.from('profiles').update({ premium_status: 'approved', panels_limit: currentLimit + codeData.panels_granted }).eq('id', user.id);
-      const durationHours = codeData.duration_hours || 720;
       const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + durationHours);
+      expiresAt.setHours(expiresAt.getHours() + (codeData.duration_hours || 720));
       for (let i = 0; i < codeData.panels_granted; i++) {
         await supabase.from('panels').insert({
-          user_id: user.id,
-          name: `ClaimedPanel_${Date.now()}_${i}`,
-          language: 'nodejs',
-          expires_at: expiresAt.toISOString(),
+          user_id: user.id, name: `ClaimedPanel_${Date.now()}_${i}`,
+          language: 'nodejs', expires_at: expiresAt.toISOString(),
         });
       }
-      toast({ title: '🎉 Code Redeemed!', description: `${codeData.panels_granted} panel(s) unlocked! Tap them to set up.` });
+      toast({ title: '🎉 Code Redeemed!', description: `${codeData.panels_granted} panel(s) unlocked!` });
       setRedeemCode('');
       await fetchPanels();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
     setRedeeming(false);
   };
@@ -176,8 +199,7 @@ const Dashboard = () => {
   const handlePanelClick = (panel: Panel) => {
     if (panel.name.startsWith('ClaimedPanel_')) {
       setSetupPanel({ id: panel.id, name: '', language: 'nodejs' });
-      setSetupName('');
-      setSetupLanguage('nodejs');
+      setSetupName(''); setSetupLanguage('nodejs');
     } else {
       navigate(`/panel/${panel.id}`);
     }
@@ -189,481 +211,463 @@ const Dashboard = () => {
       return;
     }
     setSavingSetup(true);
-    const { error } = await supabase.from('panels').update({ name: setupName.trim(), language: setupLanguage }).eq('id', setupPanel.id);
+    const { error } = await supabase.from('panels')
+      .update({ name: setupName.trim(), language: setupLanguage }).eq('id', setupPanel.id);
     if (error) {
       toast({ title: 'Error', description: 'Failed to update panel', variant: 'destructive' });
       setSavingSetup(false);
     } else {
       toast({ title: 'Panel configured!', description: 'Your panel is ready to use' });
       const panelId = setupPanel.id;
-      setSetupPanel(null);
-      setSavingSetup(false);
+      setSetupPanel(null); setSavingSetup(false);
       navigate(`/panel/${panelId}`);
     }
   };
 
+  /* ── Derived values ── */
   const runningCount = panels.filter(p => p.status === 'running').length;
   const panelsLimit = profile?.panels_limit || 0;
   const canCreatePanel = isPremium && panels.length < panelsLimit;
   const username = profile?.username || profile?.email?.split('@')[0] || 'user';
   const firstName = username.split(/[._-]/)[0];
   const usagePct = panelsLimit > 0 ? Math.round((panels.length / panelsLimit) * 100) : 0;
+  const initials = getInitials(username);
 
-  const statusConfig = {
-    running:   { dot: 'bg-success shadow-[0_0_5px_1px_hsl(var(--success)/0.7)]', badge: 'text-success bg-success/10 border-success/20', label: 'ONLINE' },
-    deploying: { dot: 'bg-warning animate-pulse', badge: 'text-warning bg-warning/10 border-warning/20', label: 'DEPLOYING' },
-    error:     { dot: 'bg-destructive', badge: 'text-destructive bg-destructive/10 border-destructive/20', label: 'ERROR' },
-    stopped:   { dot: 'bg-muted-foreground/30', badge: 'text-muted-foreground bg-muted/20 border-border', label: 'OFFLINE' },
-  };
-
+  /* ── Loading screen ── */
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative w-14 h-14">
-            <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-            <div className="relative w-14 h-14 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
-              <Terminal className="w-6 h-6 text-primary" />
-            </div>
+      <div style={{ minHeight: '100vh', background: '#07070d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+        <svg style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', opacity: 0.04 }}>
+          <defs>
+            <pattern id="dotgrid-load" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="1" fill="#00e676" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#dotgrid-load)" />
+        </svg>
+        <div style={{ position: 'relative', width: 52, height: 52 }}>
+          <svg width="52" height="52" viewBox="0 0 52 52" style={{ position: 'absolute', inset: 0, animation: 'spin 2s linear infinite' }}>
+            <circle cx="26" cy="26" r="24" stroke="#00e676" strokeWidth="1.5" strokeOpacity="0.3" strokeDasharray="8 4" />
+          </svg>
+          <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', background: '#0d1a12', border: '1px solid #00e67640', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Terminal size={16} color="#00e676" />
           </div>
-          <p className="text-muted-foreground font-mono text-sm tracking-wider">CONNECTING...</p>
         </div>
+        <p style={{ fontFamily: 'monospace', fontSize: 11, color: '#2a2a3a', letterSpacing: '0.12em' }}>CONNECTING...</p>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div style={{ minHeight: '100vh', background: '#07070d', color: '#e0e4ef', overflowX: 'hidden' }}>
 
-      {/* ── Header ───────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-lg border-b border-border">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Avatar with online indicator */}
-            <div className="relative">
-              <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/30 flex items-center justify-center">
-                <span className="font-mono font-black text-sm text-primary tracking-tight">{getInitials(username)}</span>
+      {/* ── Dot grid background ── */}
+      <svg style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0, opacity: 0.04 }}>
+        <defs>
+          <pattern id="dotgrid" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="1" fill="#00e676" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dotgrid)" />
+      </svg>
+
+      <div style={{ position: 'relative', zIndex: 1 }}>
+
+        {/* ── Header ── */}
+        <header
+          style={{
+            padding: '14px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            background: 'rgba(7,7,13,0.92)',
+            backdropFilter: 'blur(12px)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 50,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Avatar with SVG pulse rings */}
+            <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
+              <svg width="44" height="44" viewBox="0 0 44 44" style={{ position: 'absolute', inset: 0 }}>
+                <circle cx="22" cy="22" r="21" stroke="#00e676" strokeWidth="1" strokeOpacity="0.25" />
+                <circle cx="22" cy="22" r="16" stroke="#00e676" strokeWidth="0.6" strokeOpacity="0.12" />
+              </svg>
+              <div style={{
+                position: 'absolute', top: 5, left: 5, right: 5, bottom: 5,
+                borderRadius: '50%', background: '#0d1a12', border: '1px solid rgba(0,230,118,0.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 800, fontSize: 13, color: '#00e676',
+              }}>
+                {initials}
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border-2 border-background shadow-[0_0_4px_hsl(var(--success)/0.8)]" />
+              <div style={{
+                position: 'absolute', bottom: 1, right: 1, width: 10, height: 10,
+                borderRadius: '50%', background: '#00e676', border: '2px solid #07070d',
+                boxShadow: '0 0 6px #00e676',
+              }} />
             </div>
+
             <div>
-              <p className="font-mono font-bold text-sm text-foreground leading-none">{firstName}<span className="text-primary">@idevhost</span></p>
-              <div className="flex items-center gap-1.5 mt-0.5">
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>
+                {firstName}<span style={{ color: '#00e676' }}>@idevhost</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
                 {isPremium ? (
-                  <span className="text-[10px] font-bold font-mono tracking-widest text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">PREMIUM</span>
+                  <>
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="#f0b429">
+                      <path d="M5 0.5L6.12 3.62H9.51L6.69 5.63L7.81 8.75L5 6.74L2.19 8.75L3.31 5.63L0.49 3.62H3.88L5 0.5Z" />
+                    </svg>
+                    <span style={{ fontSize: 11, color: '#f0b429', fontWeight: 600 }}>PREMIUM</span>
+                  </>
                 ) : (
-                  <span className="text-[10px] font-mono text-muted-foreground">Free plan</span>
+                  <span style={{ fontSize: 11, color: '#333' }}>Free plan</span>
                 )}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/60 hover:text-foreground" onClick={() => fetchPanels(true)} disabled={refreshing}>
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            </Button>
+
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => fetchPanels(true)}
+              disabled={refreshing}
+              style={{ width: 34, height: 34, borderRadius: 10, background: '#0d0d1a', border: '1px solid #1a1a2e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <RefreshCw size={13} color="#333" style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+            </button>
             {isAdmin && (
               <Link to="/admin">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-warning hover:text-warning hover:bg-warning/10">
-                  <Shield className="w-4 h-4" />
-                </Button>
+                <button style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(240,180,41,0.08)', border: '1px solid rgba(240,180,41,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Shield size={14} color="#f0b429" />
+                </button>
               </Link>
             )}
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/60 hover:text-foreground" onClick={handleSignOut}>
-              <LogOut className="w-3.5 h-3.5" />
-            </Button>
+            <button
+              onClick={handleSignOut}
+              style={{ width: 34, height: 34, borderRadius: 10, background: '#0d0d1a', border: '1px solid #1a1a2e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <LogOut size={13} color="#333" />
+            </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="px-4 pb-28 pt-4 space-y-4 max-w-lg mx-auto">
+        {/* ── Main content ── */}
+        <main style={{ maxWidth: 560, margin: '0 auto', padding: '20px 18px 100px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-        {/* ── Stats ────────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-2.5">
-
-          {/* Panels */}
-          <div className="bg-card border border-primary/10 rounded-2xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <Server className="w-3.5 h-3.5 text-primary" />
-              <span className="text-[9px] font-mono font-semibold text-muted-foreground/60 tracking-wider">PANELS</span>
-            </div>
-            <p className="text-xl font-mono font-black text-primary leading-none">
-              {panels.length}<span className="text-muted-foreground/40 text-sm font-normal">/{panelsLimit || '—'}</span>
-            </p>
-          </div>
-
-          {/* Online */}
-          <div className={`border rounded-2xl p-3 relative overflow-hidden ${runningCount > 0 ? 'border-success/20' : 'bg-card border-border'}`}>
-            {runningCount > 0 && <div className="absolute inset-0 bg-success/5 pointer-events-none" />}
-            <div className="flex items-center justify-between mb-2">
-              <Activity className={`w-3.5 h-3.5 ${runningCount > 0 ? 'text-success' : 'text-muted-foreground/40'}`} />
-              <span className="text-[9px] font-mono font-semibold text-muted-foreground/60 tracking-wider">ONLINE</span>
-            </div>
-            <p className={`text-xl font-mono font-black leading-none ${runningCount > 0 ? 'text-success' : 'text-muted-foreground/40'}`}>
-              {runningCount}
-            </p>
-            {runningCount > 0 && (
-              <div className="flex items-center gap-1 mt-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                <span className="text-[9px] text-success font-mono">live</span>
+          {/* ── Stats cards ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            {[
+              { label: 'PANELS', value: `${panels.length}/${panelsLimit || '—'}`, color: '#00b0ff' },
+              { label: 'ONLINE', value: String(runningCount), color: '#00e676' },
+              { label: 'PLAN', value: isPremium ? 'PRO' : 'FREE', color: isPremium ? '#f0b429' : '#333' },
+            ].map(s => (
+              <div key={s.label} style={{ background: '#0d0d1a', border: `1px solid ${s.color}1a`, borderRadius: 16, padding: '13px 11px 9px', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ fontSize: 9, color: '#333', letterSpacing: '0.12em', fontWeight: 600, marginBottom: 5 }}>{s.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{s.value}</div>
+                <div style={{ position: 'absolute', bottom: 4, right: 2, opacity: 0.35 }}>
+                  <Sparkline color={s.color} />
+                </div>
               </div>
-            )}
+            ))}
           </div>
 
-          {/* Plan */}
-          <div className={`border rounded-2xl p-3 ${isPremium ? 'bg-warning/5 border-warning/20' : 'bg-card border-border'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <Zap className={`w-3.5 h-3.5 ${isPremium ? 'text-warning' : 'text-muted-foreground/40'}`} />
-              <span className="text-[9px] font-mono font-semibold text-muted-foreground/60 tracking-wider">PLAN</span>
+          {/* ── Capacity bar ── */}
+          <div style={{ background: '#0d0d1a', border: '1px solid #1a1a2e', borderRadius: 12, padding: '12px 16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: '#333', letterSpacing: '0.1em', fontWeight: 600 }}>CAPACITY</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#00b0ff' }}>{panels.length} / {panelsLimit || '—'}</span>
             </div>
-            <p className={`text-xl font-mono font-black leading-none ${isPremium ? 'text-warning' : 'text-muted-foreground/40'}`}>
-              {isPremium ? 'PRO' : 'FREE'}
-            </p>
-            {!isPremium && (
-              <button onClick={() => navigate('/pricing')} className="text-[9px] text-primary font-mono mt-1.5 hover:underline block">
-                Upgrade →
+            <div style={{ height: 3, background: '#1a1a2e', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min(100, usagePct)}%`, height: '100%', background: usagePct >= 90 ? '#ff4d4d' : usagePct >= 60 ? '#f0b429' : '#00b0ff', borderRadius: 3, transition: 'width 0.7s ease' }} />
+            </div>
+            <div style={{ marginTop: 6, fontSize: 10, color: '#2a2a3a' }}>
+              {panelsLimit === 0
+                ? 'No panels purchased yet · '
+                : `${panelsLimit - panels.length} slot${panelsLimit - panels.length !== 1 ? 's' : ''} available · `}
+              <span onClick={() => navigate('/pricing')} style={{ color: '#00e676', cursor: 'pointer' }}>buy more →</span>
+            </div>
+          </div>
+
+          {/* ── Buy banner ── */}
+          <div
+            onClick={() => navigate('/pricing')}
+            style={{ background: '#0d0d1a', border: '1px solid rgba(0,230,118,0.12)', borderRadius: 18, padding: '16px 18px', position: 'relative', overflow: 'hidden', cursor: 'pointer' }}
+          >
+            <HexPattern />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: '#fff' }}>Deploy a panel</div>
+                <div style={{ fontSize: 12, color: '#444', marginTop: 5 }}>
+                  From <span style={{ color: '#00e676', fontWeight: 700 }}>₦1,400/mo</span> · Node.js & Python
+                </div>
+                <div style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6, background: '#00e676', color: '#000', fontWeight: 800, fontSize: 12, padding: '7px 14px', borderRadius: 8 }}>
+                  <ShoppingCart size={12} /> BUY NOW
+                </div>
+              </div>
+              <ServerRackSVG />
+            </div>
+          </div>
+
+          {/* ── Redeem code ── */}
+          <div style={{ background: '#0d0d1a', border: redeemFocused ? '1px solid rgba(0,230,118,0.3)' : '1px solid #1a1a2e', borderRadius: 14, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+            <div style={{ background: '#0a0a14', borderBottom: '1px solid #1a1a2e', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 5 }}>
+                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#ff4d4d' }} />
+                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#f0b429' }} />
+                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#00e676' }} />
+              </div>
+              <span style={{ flex: 1, textAlign: 'center', fontSize: 10, color: '#2a2a3a', letterSpacing: '0.08em' }}>redeem_code.sh</span>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="#f0b429" opacity="0.5">
+                <path d="M6 0.5L7.3 4.2H11.3L8.1 6.6L9.3 10.3L6 7.9L2.7 10.3L3.9 6.6L0.7 4.2H4.7L6 0.5Z" />
+              </svg>
+            </div>
+            <div style={{ padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, color: '#2a2a3a', marginBottom: 8, fontFamily: 'monospace' }}>
+                <span style={{ color: '#00e676' }}>$</span> enter your redemption code
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#07070d', border: `1px solid ${redeemFocused ? 'rgba(0,230,118,0.3)' : '#1a1a2e'}`, borderRadius: 8, padding: '10px 12px', marginBottom: 10, transition: 'border-color 0.2s' }}>
+                <span style={{ color: '#00e676', fontWeight: 700, fontFamily: 'monospace', flexShrink: 0 }}>&gt;_</span>
+                <input
+                  type="text"
+                  placeholder="IDEV-XXXX-XXXX"
+                  value={redeemCode}
+                  onChange={e => setRedeemCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+                  onFocus={() => setRedeemFocused(true)}
+                  onBlur={() => setRedeemFocused(false)}
+                  onKeyDown={e => e.key === 'Enter' && handleRedeemCode()}
+                  maxLength={20}
+                  spellCheck={false}
+                  autoCapitalize="characters"
+                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontFamily: 'monospace', fontSize: 13, letterSpacing: '0.18em', color: '#fff', caretColor: '#00e676' }}
+                />
+                {redeemCode && (
+                  <button onClick={() => setRedeemCode('')} style={{ color: '#333', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'monospace', fontSize: 11 }}>✕</button>
+                )}
+              </div>
+              <button
+                onClick={handleRedeemCode}
+                disabled={redeeming || !redeemCode.trim()}
+                style={{
+                  width: '100%', padding: '10px', borderRadius: 8, fontWeight: 700, fontSize: 12,
+                  cursor: redeemCode.trim() && !redeeming ? 'pointer' : 'not-allowed',
+                  letterSpacing: '0.1em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: redeemCode.trim() && !redeeming ? 'rgba(0,230,118,0.12)' : 'rgba(255,255,255,0.03)',
+                  border: redeemCode.trim() && !redeeming ? '1px solid rgba(0,230,118,0.3)' : '1px solid #1a1a2e',
+                  color: redeemCode.trim() && !redeeming ? '#00e676' : '#333',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {redeeming ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Verifying…</> : <><Gift size={13} /> REDEEM CODE</>}
+              </button>
+            </div>
+          </div>
+
+          {/* ── Panels header ── */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: '#2a2a3a', letterSpacing: '0.12em', fontWeight: 700 }}>YOUR PANELS</span>
+            {canCreatePanel && (
+              <button
+                onClick={() => setShowCreateDialog(true)}
+                style={{ fontSize: 10, color: '#00b0ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,176,255,0.08)', border: '1px solid rgba(0,176,255,0.2)', borderRadius: 6, padding: '4px 9px', fontWeight: 600 }}
+              >
+                <Plus size={10} /> NEW
               </button>
             )}
           </div>
-        </div>
 
-        {/* Usage bar */}
-        <div className="bg-card border border-border rounded-xl px-4 py-3">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-[10px] font-mono font-semibold text-muted-foreground/60 tracking-wider">CAPACITY</span>
-            <span className="font-mono font-bold text-xs text-foreground">{panels.length} / {panelsLimit || '—'}</span>
-          </div>
-          <div className="w-full h-[3px] bg-muted/40 rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all duration-700" style={{ width: `${Math.min(100, usagePct)}%` }} />
-          </div>
-          <p className="text-[10px] text-muted-foreground/50 mt-1.5 font-mono">
-            {panelsLimit === 0 ? 'No panels purchased yet' : `${panelsLimit - panels.length} slot${panelsLimit - panels.length !== 1 ? 's' : ''} available`}
-            {panelsLimit > 0 && <> · <button onClick={() => navigate('/pricing')} className="text-primary hover:underline">buy more →</button></>}
-          </p>
-        </div>
-
-        {/* ── Buy Banner ───────────────────────────────────────────────────── */}
-        <div
-          className="bg-card border border-primary/20 rounded-2xl px-4 py-4 cursor-pointer group active:scale-[0.99] transition-transform"
-          onClick={() => navigate('/pricing')}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                <ShoppingCart className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="font-bold text-foreground text-sm font-mono">Deploy another panel</p>
-                <p className="text-xs text-muted-foreground mt-0.5 font-mono">From <span className="text-primary font-semibold">₦1,400/mo</span> · instant</p>
-              </div>
-            </div>
-            <div className="shrink-0 ml-3">
-              <div className="flex items-center gap-1 bg-primary text-primary-foreground text-[11px] font-mono font-bold px-3 py-2 rounded-lg">
-                BUY <ChevronRight className="w-3 h-3" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Redeem Code — Terminal Style ─────────────────────────────────── */}
-        <div
-          className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
-            redeemFocused
-              ? 'border-primary/50 shadow-lg shadow-primary/10'
-              : 'border-border'
-          }`}
-          style={{
-            background: 'hsl(var(--card))',
-          }}
-        >
-          {/* Header bar */}
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30">
-            <div className="flex gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-destructive/60" />
-              <div className="w-2.5 h-2.5 rounded-full bg-warning/60" />
-              <div className="w-2.5 h-2.5 rounded-full bg-success/60" />
-            </div>
-            <span className="text-xs font-mono text-muted-foreground/60 flex-1 text-center">
-              redeem_code.sh
-            </span>
-            <Gift className="w-3.5 h-3.5 text-muted-foreground/40" />
-          </div>
-
-          {/* Terminal body */}
-          <div className="p-4 space-y-3">
-            <div className="flex items-start gap-2 font-mono text-xs text-muted-foreground">
-              <span className="text-primary mt-0.5">$</span>
-              <span>Enter your redemption code below</span>
-            </div>
-
-            {/* Code input row */}
-            <div className={`flex items-center gap-2 bg-background/60 border rounded-xl px-3 py-2.5 transition-all ${
-              redeemFocused ? 'border-primary/50' : 'border-border/50'
-            }`}>
-              <span className={`font-mono text-sm font-bold shrink-0 transition-colors ${redeemFocused ? 'text-primary' : 'text-muted-foreground/50'}`}>
-                &gt;_
-              </span>
-              <input
-                type="text"
-                placeholder="IDEV-XXXX-XXXX"
-                value={redeemCode}
-                onChange={(e) => setRedeemCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
-                onFocus={() => setRedeemFocused(true)}
-                onBlur={() => setRedeemFocused(false)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRedeemCode()}
-                maxLength={20}
-                className="flex-1 bg-transparent font-mono text-sm font-bold tracking-[0.25em] text-foreground placeholder:text-muted-foreground/30 placeholder:font-normal placeholder:tracking-widest outline-none uppercase"
-                spellCheck={false}
-                autoCapitalize="characters"
-                autoCorrect="off"
-              />
-              {redeemCode && (
-                <button
-                  onClick={() => setRedeemCode('')}
-                  className="text-muted-foreground/40 hover:text-muted-foreground transition-colors font-mono text-xs"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Submit button */}
-            <button
-              onClick={handleRedeemCode}
-              disabled={redeeming || !redeemCode.trim()}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-mono font-bold text-sm transition-all ${
-                redeemCode.trim() && !redeeming
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 hover:shadow-primary/30'
-                  : 'bg-muted/40 text-muted-foreground/40 cursor-not-allowed'
-              }`}
-            >
-              {redeeming ? (
-                <><Loader2 className="w-4 h-4 animate-spin" />Verifying code…</>
-              ) : (
-                <><CornerDownRight className="w-4 h-4" />REDEEM CODE</>
-              )}
-            </button>
-
-            <p className="text-[10px] font-mono text-muted-foreground/40 text-center">
-              Codes unlock free panel slots · Obtain from promotions
-            </p>
-          </div>
-        </div>
-
-        {/* ── Panels ───────────────────────────────────────────────────────── */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <h2 className="font-bold text-foreground text-sm tracking-wide">YOUR PANELS</h2>
-              {panels.length > 0 && (
-                <span className="text-[10px] font-mono font-bold text-muted-foreground bg-muted/60 border border-border px-2 py-0.5 rounded-full">
-                  {panels.length}/{panelsLimit}
-                </span>
-              )}
-            </div>
-            {canCreatePanel && (
-              <Button size="sm" onClick={() => setShowCreateDialog(true)} className="bg-primary hover:bg-primary/90 h-8 text-xs gap-1.5 font-mono">
-                <Plus className="w-3 h-3" /> New Panel
-              </Button>
-            )}
-          </div>
-
-          {/* Empty state */}
+          {/* ── Empty state ── */}
           {panels.length === 0 && (
-            <div className="relative flex flex-col items-center text-center py-14 rounded-2xl border border-dashed border-border overflow-hidden">
-              <div
-                className="absolute inset-0 opacity-[0.02]"
-                style={{ backgroundImage: 'radial-gradient(hsl(var(--primary)) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
-              />
-              <div className="relative">
-                <div className="w-16 h-16 rounded-2xl bg-muted/60 border border-border flex items-center justify-center mx-auto mb-4">
-                  <Server className="w-7 h-7 text-muted-foreground/50" />
-                </div>
-                <p className="font-bold text-foreground mb-1">No panels yet</p>
-                <p className="text-sm text-muted-foreground mb-6 max-w-[220px]">
-                  {isPremium ? 'Create your first panel to start hosting your app' : 'Purchase a hosting plan to get started'}
+            <div style={{ background: '#0d0d1a', border: '1px dashed #1a1a2e', borderRadius: 16, padding: '48px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" opacity="0.3">
+                {[0, 1, 2].map(i => (
+                  <g key={i} transform={`translate(4,${6 + i * 13})`}>
+                    <rect x="0" y="0" width="40" height="10" rx="2" stroke="#00e676" strokeWidth="1" fill="none" />
+                    <circle cx="35" cy="5" r="2" fill={i === 0 ? '#00e676' : '#1a2a1a'} />
+                  </g>
+                ))}
+              </svg>
+              <div>
+                <p style={{ fontWeight: 700, color: '#fff', marginBottom: 6 }}>No panels yet</p>
+                <p style={{ fontSize: 13, color: '#333', marginBottom: 16 }}>
+                  {isPremium ? 'Create your first panel to start hosting' : 'Purchase a plan to get started'}
                 </p>
-                {isPremium ? (
-                  <Button onClick={() => setShowCreateDialog(true)} className="bg-primary hover:bg-primary/90 gap-2">
-                    <Plus className="w-4 h-4" /> Create Panel
-                  </Button>
-                ) : (
-                  <Button onClick={() => navigate('/pricing')} className="bg-primary hover:bg-primary/90 gap-2">
-                    <ShoppingCart className="w-4 h-4" /> Browse Plans
-                  </Button>
-                )}
+                <button
+                  onClick={() => isPremium ? setShowCreateDialog(true) : navigate('/pricing')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#00e676', color: '#000', fontWeight: 800, fontSize: 12, padding: '8px 16px', borderRadius: 8, cursor: 'pointer', border: 'none' }}
+                >
+                  <ShoppingCart size={13} /> {isPremium ? 'Create Panel' : 'Browse Plans'}
+                </button>
               </div>
             </div>
           )}
 
-          {/* Panel cards */}
-          <div className="space-y-2">
-            {panels.map((panel) => {
+          {/* ── Panel cards ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {panels.map(panel => {
               const days = daysLeft(panel.expires_at);
               const isExpiringSoon = days !== null && days <= 5 && days > 0;
               const isExpired = days !== null && days <= 0;
               const needsSetup = panel.name.startsWith('ClaimedPanel_');
-              const cfg = statusConfig[panel.status as keyof typeof statusConfig] ?? statusConfig.stopped;
+
+              const statusColor =
+                panel.status === 'running' ? '#00e676' :
+                panel.status === 'deploying' ? '#f0b429' :
+                panel.status === 'error' ? '#ff4d4d' : '#1e1e2e';
+              const statusLabel =
+                panel.status === 'running' ? 'ONLINE' :
+                panel.status === 'deploying' ? 'DEPLOYING' :
+                panel.status === 'error' ? 'ERROR' : 'OFFLINE';
+              const glow =
+                panel.status === 'running' ? '0 0 8px rgba(0,230,118,0.3)' :
+                panel.status === 'error' ? '0 0 8px rgba(255,77,77,0.3)' : 'none';
+
+              const langColor = panel.language === 'nodejs' ? '#00e676' : '#3b82f6';
+              const langBg = panel.language === 'nodejs' ? 'rgba(0,230,118,0.07)' : 'rgba(59,130,246,0.07)';
+              const langBorder = panel.language === 'nodejs' ? 'rgba(0,230,118,0.15)' : 'rgba(59,130,246,0.15)';
 
               return (
                 <div
                   key={panel.id}
                   onClick={() => handlePanelClick(panel)}
-                  className={`group relative bg-card rounded-2xl border cursor-pointer active:scale-[0.985] transition-all duration-200 overflow-hidden ${
-                    panel.status === 'running'
-                      ? 'border-success/20 hover:border-success/40 hover:shadow-md hover:shadow-success/5'
-                      : panel.status === 'error'
-                      ? 'border-destructive/20 hover:border-destructive/30'
-                      : 'border-border hover:border-primary/30 hover:shadow-md hover:shadow-primary/5'
-                  }`}
+                  style={{ background: '#0d0d1a', border: `1px solid ${statusColor}1a`, borderRadius: 14, padding: '13px 14px 13px 17px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', overflow: 'hidden' }}
                 >
-                  {/* Subtle status glow on running panels */}
-                  {panel.status === 'running' && (
-                    <div className="absolute inset-0 bg-success/[0.03] pointer-events-none" />
+                  {/* Left accent strip */}
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: statusColor, boxShadow: glow }} />
+
+                  {/* Lang icon */}
+                  {needsSetup ? (
+                    <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px dashed #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 18, color: '#333' }}>?</span>
+                    </div>
+                  ) : (
+                    <div style={{ width: 42, height: 42, borderRadius: 12, background: langBg, border: `1px solid ${langBorder}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: 15, fontWeight: 900, color: langColor, lineHeight: 1 }}>
+                        {panel.language === 'nodejs' ? 'JS' : 'PY'}
+                      </span>
+                      <span style={{ fontSize: 9, color: langColor + '55', marginTop: 1 }}>
+                        {panel.language === 'nodejs' ? 'node' : 'py3'}
+                      </span>
+                    </div>
                   )}
 
-                  {/* Left accent strip */}
-                  <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${
-                    panel.status === 'running' ? 'bg-success' :
-                    panel.status === 'deploying' ? 'bg-warning' :
-                    panel.status === 'error' ? 'bg-destructive' : 'bg-muted/30'
-                  }`} />
-
-                  <div className="flex items-center gap-3 p-4 pl-5">
-                    {/* Language icon */}
-                    <div className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center font-mono font-black shrink-0 ${
-                      needsSetup
-                        ? 'bg-muted/40 border border-dashed border-border text-muted-foreground'
-                        : panel.language === 'nodejs'
-                        ? 'bg-nodejs/10 border border-nodejs/20 text-nodejs'
-                        : 'bg-python/10 border border-python/20 text-python'
-                    }`}>
-                      <span className="text-base leading-none">
-                        {needsSetup ? '?' : panel.language === 'nodejs' ? 'JS' : 'PY'}
-                      </span>
-                      <span className="text-[9px] opacity-50 leading-none mt-0.5">
-                        {needsSetup ? 'tap' : panel.language === 'nodejs' ? 'node' : 'py3'}
-                      </span>
+                  {/* Name + meta */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: needsSetup ? '#00b0ff' : '#fff', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {needsSetup ? 'Tap to configure →' : panel.name}
                     </div>
-
-                    {/* Name & meta */}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-foreground text-sm truncate">
-                        {needsSetup ? <span className="text-primary">Tap to configure →</span> : panel.name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        {!needsSetup && (
-                          <span className="text-[11px] text-muted-foreground font-mono">
-                            {panel.language === 'nodejs' ? 'Node.js' : 'Python'}
-                          </span>
-                        )}
-                        {isExpired && (
-                          <span className="flex items-center gap-1 text-[11px] text-destructive font-semibold">
-                            <AlertCircle className="w-3 h-3" />Expired
-                          </span>
-                        )}
-                        {isExpiringSoon && !isExpired && (
-                          <span className="flex items-center gap-1 text-[11px] text-warning font-semibold">
-                            <Clock className="w-3 h-3" />{days}d left
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Status badge + arrow */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      {!needsSetup && (
-                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-mono font-bold tracking-wider ${cfg.badge}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                          <span className="hidden xs:inline">{cfg.label}</span>
-                        </div>
-                      )}
-                      <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                    <div style={{ fontSize: 11, color: '#2a2a3a', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {isExpired ? (
+                        <span style={{ color: '#ff4d4d', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#ff4d4d" strokeWidth="1"/><path d="M5 3v2.5" stroke="#ff4d4d" strokeWidth="1" strokeLinecap="round"/><circle cx="5" cy="7" r="0.5" fill="#ff4d4d"/></svg>
+                          Expired
+                        </span>
+                      ) : isExpiringSoon ? (
+                        <span style={{ color: '#f0b429', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <Clock size={10} />{days}d left
+                        </span>
+                      ) : !needsSetup ? (
+                        panel.language === 'nodejs' ? 'Node.js 20' : 'Python 3.11'
+                      ) : null}
                     </div>
                   </div>
+
+                  {/* Status badge */}
+                  {!needsSetup && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: `${statusColor}12`, border: `1px solid ${statusColor}25`, borderRadius: 6, padding: '4px 8px', flexShrink: 0 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor, boxShadow: glow }} />
+                      <span style={{ fontSize: 9, color: statusColor, fontWeight: 700, letterSpacing: '0.1em' }}>{statusLabel}</span>
+                    </div>
+                  )}
+
+                  <ChevronRight size={14} color="#1e1e2e" />
                 </div>
               );
             })}
           </div>
 
+          {/* ── Slots full note ── */}
           {panels.length > 0 && panels.length >= panelsLimit && panelsLimit > 0 && (
-            <div className="flex items-center justify-center gap-2 py-2 text-xs font-mono text-muted-foreground">
-              <span>All {panelsLimit} slots used</span>
-              <span className="text-border">·</span>
-              <button onClick={() => navigate('/pricing')} className="text-primary hover:underline">Buy more</button>
+            <div style={{ textAlign: 'center', fontSize: 11, fontFamily: 'monospace', color: '#2a2a3a' }}>
+              All {panelsLimit} slots used ·{' '}
+              <span onClick={() => navigate('/pricing')} style={{ color: '#00e676', cursor: 'pointer' }}>buy more →</span>
             </div>
           )}
-        </div>
 
-        {/* ── Live terminal footer ──────────────────────────────────────────── */}
-        <div className="font-mono text-xs bg-[hsl(var(--card))] border border-border rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border-b border-border">
-            <div className="flex gap-1">
-              <div className="w-2 h-2 rounded-full bg-muted/60" />
-              <div className="w-2 h-2 rounded-full bg-muted/60" />
-              <div className="w-2 h-2 rounded-full bg-muted/60" />
-            </div>
-            <span className="text-muted-foreground/40 text-[10px]">terminal</span>
+          {/* ── Terminal footer ── */}
+          <div style={{ background: '#0d0d1a', border: '1px solid #1a1a2e', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+              <polyline points="1,3 5,6 1,9" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="6" y1="9" x2="11" y2="9" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#2a2a3a' }}>
+              <span style={{ color: '#00e676' }}>{username}</span>
+              {' · '}{panels.length}/{panelsLimit || '—'} panels{' · '}
+              {runningCount > 0 && <span style={{ color: '#00e676' }}>{runningCount} running · </span>}
+              {isPremium ? 'premium' : 'free'}
+            </span>
           </div>
-          <div className="px-4 py-3 space-y-1">
-            <p><span className="text-primary">$</span> <span className="text-muted-foreground/60">idevhost status --user</span></p>
-            <p><span className="text-muted-foreground/40">›</span> <span className="text-muted-foreground">user:</span> <span className="text-foreground">{username}</span></p>
-            <p><span className="text-muted-foreground/40">›</span> <span className="text-muted-foreground">panels:</span> <span className="text-foreground">{panels.length}/{panelsLimit || '—'}</span> &nbsp;<span className="text-success">{runningCount > 0 ? `(${runningCount} running)` : ''}</span></p>
-            <p><span className="text-muted-foreground/40">›</span> <span className="text-muted-foreground">plan:</span> <span className={isPremium ? 'text-warning' : 'text-muted-foreground'}>{isPremium ? 'premium' : 'free'}</span></p>
-          </div>
-        </div>
-      </main>
+        </main>
+      </div>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       <CreatePanelDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} onCreated={fetchPanels} />
 
       {/* Panel Setup Dialog */}
       <Dialog open={!!setupPanel} onOpenChange={(open) => !open && setSetupPanel(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" style={{ background: '#0d0d1a', border: '1px solid #1a1a2e', color: '#e0e4ef' }}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Terminal className="w-5 h-5 text-primary" />
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff' }}>
+              <svg width="16" height="16" viewBox="0 0 12 12" fill="none">
+                <polyline points="1,3 5,6 1,9" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="6" y1="9" x2="11" y2="9" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
               Configure Panel
             </DialogTitle>
-            <DialogDescription>Name your panel and choose its runtime</DialogDescription>
+            <DialogDescription style={{ color: '#444' }}>Name your panel and choose its runtime</DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="panel-name">Panel Name</Label>
+          <div style={{ paddingTop: 16, paddingBottom: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Label style={{ color: '#888', fontSize: 12 }}>Panel Name</Label>
               <Input
-                id="panel-name"
                 placeholder="my-discord-bot"
                 value={setupName}
-                onChange={(e) => setSetupName(e.target.value)}
+                onChange={e => setSetupName(e.target.value)}
                 className="font-mono"
+                style={{ background: '#07070d', border: '1px solid #1a1a2e', color: '#fff' }}
                 autoFocus
               />
             </div>
-            <div className="space-y-2">
-              <Label>Runtime</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  { key: 'nodejs', code: 'JS', label: 'Node.js' },
-                  { key: 'python', code: 'PY', label: 'Python' },
-                ] as const).map(({ key, code, label }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSetupLanguage(key)}
-                    className={`p-4 rounded-xl border-2 transition-all text-center ${
-                      setupLanguage === key
-                        ? `border-${key === 'nodejs' ? 'nodejs' : 'python'} bg-${key === 'nodejs' ? 'nodejs' : 'python'}/10`
-                        : 'border-border hover:border-border/60'
-                    }`}
-                  >
-                    <span className={`font-mono font-black text-2xl block text-${key === 'nodejs' ? 'nodejs' : 'python'}`}>{code}</span>
-                    <p className="text-sm text-muted-foreground mt-1">{label}</p>
-                  </button>
-                ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Label style={{ color: '#888', fontSize: 12 }}>Runtime</Label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {(['nodejs', 'python'] as const).map(key => {
+                  const color = key === 'nodejs' ? '#00e676' : '#3b82f6';
+                  const selected = setupLanguage === key;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setSetupLanguage(key)}
+                      style={{ padding: 16, borderRadius: 12, border: `2px solid ${selected ? color : '#1a1a2e'}`, background: selected ? `${color}10` : 'transparent', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
+                    >
+                      <span style={{ display: 'block', fontFamily: 'monospace', fontWeight: 900, fontSize: 22, color }}>{key === 'nodejs' ? 'JS' : 'PY'}</span>
+                      <span style={{ display: 'block', fontSize: 12, color: '#555', marginTop: 4 }}>{key === 'nodejs' ? 'Node.js' : 'Python'}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setSetupPanel(null)}>Cancel</Button>
-            <Button className="bg-primary hover:bg-primary/90" onClick={handleSaveSetup} disabled={savingSetup || !setupName.trim()}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <Button variant="outline" onClick={() => setSetupPanel(null)} style={{ borderColor: '#1a1a2e', color: '#555' }}>Cancel</Button>
+            <Button
+              onClick={handleSaveSetup}
+              disabled={savingSetup || !setupName.trim()}
+              style={{ background: '#00e676', color: '#000', fontWeight: 700 }}
+            >
               {savingSetup ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save & Open'}
             </Button>
           </div>
