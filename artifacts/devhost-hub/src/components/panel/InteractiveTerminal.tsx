@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, ChevronDown, Square, RotateCcw, Play } from 'lucide-react';
+import { Loader2, ChevronDown, Play, Trash2, FolderOpen, Info } from 'lucide-react';
 
 interface Props {
   panelId: string;
@@ -9,346 +9,284 @@ interface Props {
   actionLoading?: boolean;
 }
 
-/* ── ANSI strip ────────────────────────────────────────────────── */
+/* ── ANSI strip ───────────────────────────────────────────────── */
 const stripAnsi = (s: string) =>
-  s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
-   .replace(/\x1b[()][AB012]/g, '')
-   .replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\r/g, '').trim();
 
-/* ── UTF-8 safe base64 encode ───────────────────────────────────── */
-const b64 = (str: string): string => {
+/* ── Low-level exec ───────────────────────────────────────────── */
+async function execCmd(panelId: string, command: string): Promise<{ ok: boolean; out: string; err: string }> {
   try {
-    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
-      (_, p1) => String.fromCharCode(parseInt(p1, 16))));
-  } catch { return btoa(unescape(encodeURIComponent(str))); }
-};
+    const { data, error } = await supabase.functions.invoke('vm-proxy', {
+      body: { action: 'terminal:exec', panelId, command },
+    });
+    if (error) return { ok: false, out: '', err: error.message || 'exec failed' };
+    if (data?.error) return { ok: false, out: '', err: data.error };
+    return {
+      ok: true,
+      out: stripAnsi(data?.stdout || ''),
+      err: stripAnsi(data?.stderr || ''),
+    };
+  } catch (e: any) {
+    return { ok: false, out: '', err: e?.message || 'unknown error' };
+  }
+}
 
-/* ── Palette ────────────────────────────────────────────────────── */
+/* ── Palette ──────────────────────────────────────────────────── */
 const BG    = '#0d1117';
-const BAR   = '#161b22';
+const CARD  = '#161b22';
 const BORD  = '#21262d';
 const GREEN = '#3fb950';
 const BLUE  = '#58a6ff';
 const MUTED = '#8b949e';
 const DIM   = '#484f58';
+const AMBER = '#f0a726';
 
-/* ── Low-level exec — returns { ok, out } ───────────────────────── */
-async function exec(panelId: string, command: string): Promise<{ ok: boolean; out: string }> {
-  try {
-    const { data, error } = await supabase.functions.invoke('vm-proxy', {
-      body: { action: 'terminal:exec', panelId, command },
-    });
-    if (error || data?.error) return { ok: false, out: data?.error || error?.message || '' };
-    return {
-      ok: true,
-      out: ((data?.stdout || '') + (data?.stderr ? '\n' + data.stderr : '')).trim(),
-    };
-  } catch (e: any) {
-    return { ok: false, out: e?.message || '' };
-  }
+interface ShellLine {
+  id: string;
+  type: 'cmd' | 'out' | 'err' | 'sys' | 'info';
+  text: string;
 }
+
+const mk = (type: ShellLine['type'], text: string): ShellLine =>
+  ({ id: `${Date.now()}-${Math.random()}`, type, text });
 
 /* ════════════════════════════════════════════════════════════════ */
 export function InteractiveTerminal({ panelId, isRunning = false, onStart, actionLoading = false }: Props) {
-  const sid = `pt${panelId.replace(/-/g, '').slice(0, 12)}`;
-
-  const [output, setOutput]     = useState<string[]>([]);
-  const [input, setInput]       = useState('');
-  const [ready, setReady]       = useState(false);
-  const [sending, setSending]   = useState(false);
-  const [history, setHistory]   = useState<string[]>([]);
-  const [histIdx, setHistIdx]   = useState(-1);
-  const [histBuf, setHistBuf]   = useState('');
+  const [lines, setLines]     = useState<ShellLine[]>([]);
+  const [cmd, setCmd]         = useState('');
+  const [stdin, setStdin]     = useState('');
+  const [showStdin, setShowStdin] = useState(false);
+  const [cwd, setCwd]         = useState('~');
+  const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState<string[]>([]);
+  const [histIdx, setHistIdx] = useState(-1);
+  const [histBuf, setHistBuf] = useState('');
   const [atBottom, setAtBottom] = useState(true);
-  const [statusLabel, setStatusLabel] = useState<'init'|'ready'|'error'>('init');
 
   const bodyRef  = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const lastRaw  = useRef('');
-  const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const readyRef = useRef(false);
+  const cmdRef   = useRef<HTMLInputElement>(null);
+  const stdinRef = useRef<HTMLTextAreaElement>(null);
 
-  const addLine = (line: string) => setOutput(prev => [...prev, line]);
+  const push = (...items: ShellLine[]) => setLines(prev => [...prev, ...items]);
 
-  /* ── Initialize tmux session ────────────────────────────────── */
-  const initSession = useCallback(async () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    readyRef.current = false;
-    setReady(false);
-    setStatusLabel('init');
-    setOutput(['Connecting to terminal…']);
-    lastRaw.current = '';
-
-    // Step 1 — confirm tmux is reachable with a version check
-    let ver = await exec(panelId, 'tmux -V');
-
-    // Not found — try to auto-install inside the container
-    if (!ver.ok) {
-      setOutput(['tmux not found — installing inside container…']);
-      const install = await exec(panelId, 'apt-get install -y --no-install-recommends tmux');
-      if (!install.ok) {
-        setOutput([
-          '⚠  Could not install tmux automatically.',
-          'Debug: ' + (install.out || ver.out || '(no message)'),
-          '',
-          '── Try these steps ──────────────────────────',
-          '1. Make sure your panel is STARTED (not stopped)',
-          '2. Go to the Logs tab and run:',
-          '     apt-get install -y tmux',
-          '3. Come back here and press Reconnect',
-        ]);
-        setStatusLabel('error');
-        return;
-      }
-      // retry after install
-      ver = await exec(panelId, 'tmux -V');
-      if (!ver.ok) {
-        setOutput([
-          '⚠  Installed tmux but still cannot run it.',
-          'Debug: ' + (ver.out || '(no message)'),
-          '',
-          'Press Reconnect to try again.',
-        ]);
-        setStatusLabel('error');
-        return;
-      }
-    }
-
-    setOutput(['tmux ' + ver.out + ' — creating session…']);
-
-    // Step 2 — kill old session (may exit non-zero if not exists; that's ok — we ignore)
-    await exec(panelId, `tmux kill-session -t ${sid}`);
-    // small delay so tmux cleans up
-    await new Promise(r => setTimeout(r, 300));
-
-    // Step 3 — create session
-    const create = await exec(panelId, `TERM=xterm-256color tmux new-session -d -s ${sid} -x 200 -y 50`);
-    if (!create.ok) {
-      setOutput([
-        '⚠  Could not create tmux session.',
-        'Error: ' + (create.out || '(unknown)'),
-        '',
-        'Try pressing Reconnect.',
-      ]);
-      setStatusLabel('error');
-      return;
-    }
-
-    // Step 4 — verify session listed
-    const list = await exec(panelId, `tmux list-sessions`);
-    if (!list.ok || !list.out.includes(sid)) {
-      setOutput([
-        '⚠  Session created but not found in list.',
-        'Sessions: ' + (list.out || '(empty)'),
-        'Try pressing Reconnect.',
-      ]);
-      setStatusLabel('error');
-      return;
-    }
-
-    setOutput([
-      'Terminal ready — session: ' + sid,
-      'Type commands below. Ctrl+C to interrupt.',
-      '─'.repeat(44),
-    ]);
-    setStatusLabel('ready');
-    readyRef.current = true;
-    setReady(true);
-    inputRef.current?.focus();
-
-    // Start polling
-    pollRef.current = setInterval(doPoll, 800);
-  }, [panelId, sid]);
-
-  /* ── Poll tmux pane ─────────────────────────────────────────── */
-  const doPoll = useCallback(async () => {
-    if (!readyRef.current) return;
-    const res = await exec(panelId, `TERM=xterm-256color tmux capture-pane -t ${sid} -p -S -300`);
-    if (!res.ok) return; // session may have been killed; just skip
-    if (res.out === lastRaw.current) return;
-    lastRaw.current = res.out;
-    const lines = stripAnsi(res.out).split('\n');
-    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-    setOutput(lines.length ? lines : ['(empty pane)']);
-    if (atBottom && bodyRef.current) {
-      setTimeout(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, 30);
-    }
-  }, [panelId, sid, atBottom]);
-
-  /* ── Lifecycle: init when panelId changes OR panel becomes running ── */
+  /* ── init: get real cwd ── */
   useEffect(() => {
-    if (!isRunning) {
-      // Panel not running — clear any existing poll and session
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-      readyRef.current = false;
-      setReady(false);
-      return;
-    }
-    initSession();
-    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+    if (!isRunning) { setLines([]); setCwd('~'); return; }
+    setLines([
+      mk('sys', '── Smart Shell ─────────────────────────────'),
+      mk('info', 'Commands run inside your panel container.'),
+      mk('info', 'Use the stdin field ↓ to send input to scripts.'),
+      mk('sys', '─────────────────────────────────────────────'),
+    ]);
+    execCmd(panelId, 'pwd').then(r => { if (r.ok && r.out) setCwd(r.out); });
+    setTimeout(() => cmdRef.current?.focus(), 100);
   }, [panelId, isRunning]);
 
-  /* ── Auto-scroll ── */
+  /* ── auto-scroll ── */
   useEffect(() => {
     if (atBottom && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-  }, [output]);
+  }, [lines]);
 
   const onScroll = () => {
     const el = bodyRef.current;
-    if (!el) return;
-    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
+    if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
   };
 
-  /* ── Send text input ────────────────────────────────────────── */
-  const sendInput = async (text: string) => {
-    if (!readyRef.current || sending) return;
-    setSending(true);
-    // base64 encode → pipe to tmux load-buffer → paste into session
-    const encoded = b64(text + '\n');
-    const cmd = `echo "${encoded}" | base64 -d | tmux load-buffer - && tmux paste-buffer -t ${sid}`;
-    const res = await exec(panelId, cmd);
-    if (!res.ok) {
-      addLine('⚠ Send failed: ' + (res.out || 'unknown error'));
+  /* ── run command ── */
+  const run = async () => {
+    const trimmed = cmd.trim();
+    if (!trimmed || running) return;
+    setRunning(true);
+    setCmd('');
+    setHistIdx(-1);
+    setHistBuf('');
+    setHistory(h => [trimmed, ...h.slice(0, 99)]);
+
+    // Track cd commands
+    const cdMatch = trimmed.match(/^cd\s+(.+)$/);
+
+    // Build the actual command to exec
+    let execCommand: string;
+    const hasStdin = showStdin && stdin.trim();
+
+    if (cdMatch) {
+      // cd: change directory
+      const target = cdMatch[1].trim();
+      const newDir = target.startsWith('/') ? target :
+                     target === '..' ? cwd.split('/').slice(0, -1).join('/') || '/' :
+                     target === '~' ? '~' :
+                     cwd === '~' ? `~/${target}` : `${cwd}/${target}`;
+      push(mk('cmd', `${cwd} $ ${trimmed}`));
+      const res = await execCmd(panelId, `cd ${newDir} && pwd`);
+      if (res.ok && res.out) {
+        setCwd(res.out);
+        push(mk('out', `→ ${res.out}`));
+      } else {
+        push(mk('err', res.err || 'No such directory'));
+      }
+      setRunning(false);
+      return;
     }
-    if (text.trim()) setHistory(h => [text, ...h.slice(0, 99)]);
-    setHistIdx(-1); setHistBuf('');
-    setSending(false);
-    setTimeout(doPoll, 300);
+
+    if (hasStdin) {
+      // Pipe stdin through echo -e
+      const escapedStdin = stdin.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+      const prefix = cwd !== '~' ? `cd ${cwd} && ` : '';
+      execCommand = `${prefix}printf "${escapedStdin}\\n" | ${trimmed}`;
+      push(mk('cmd', `${cwd} $ ${trimmed} [stdin: ${stdin.split('\n').length} line(s)]`));
+    } else {
+      const prefix = cwd !== '~' ? `cd ${cwd} && ` : '';
+      execCommand = `${prefix}${trimmed}`;
+      push(mk('cmd', `${cwd} $ ${trimmed}`));
+    }
+
+    const res = await execCmd(panelId, execCommand);
+    if (res.out) push(...res.out.split('\n').filter(Boolean).map(l => mk('out', l)));
+    if (res.err) push(...res.err.split('\n').filter(Boolean).map(l => mk('err', l)));
+    if (!res.ok && !res.out && !res.err) push(mk('err', 'Command failed (non-zero exit)'));
+    if (res.ok && !res.out && !res.err) push(mk('sys', '(no output)'));
+
+    setRunning(false);
+    setTimeout(() => cmdRef.current?.focus(), 50);
   };
 
-  /* ── Send ctrl key ── */
-  const sendCtrl = async (key: string) => {
-    if (!readyRef.current) return;
-    await exec(panelId, `TERM=xterm-256color tmux send-keys -t ${sid} ${key}`);
-    setTimeout(doPoll, 300);
-  };
-
-  /* ── Keyboard ── */
-  const onKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !sending) {
-      e.preventDefault(); const val = input; setInput(''); await sendInput(val);
-    } else if (e.key === 'ArrowUp') {
+  /* ── keyboard ── */
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); run(); }
+    else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (!history.length) return;
-      if (histIdx === -1) setHistBuf(input);
-      const n = Math.min(histIdx + 1, history.length - 1); setHistIdx(n); setInput(history[n]);
-    } else if (e.key === 'ArrowDown') {
+      if (histIdx === -1) setHistBuf(cmd);
+      const n = Math.min(histIdx + 1, history.length - 1); setHistIdx(n); setCmd(history[n]);
+    }
+    else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (histIdx <= 0) { setHistIdx(-1); setInput(histBuf); return; }
-      const n = histIdx - 1; setHistIdx(n); setInput(history[n]);
-    } else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); await sendCtrl('C-c'); }
-    else if (e.ctrlKey && e.key === 'd') { e.preventDefault(); await sendCtrl('C-d'); }
+      if (histIdx <= 0) { setHistIdx(-1); setCmd(histBuf); return; }
+      const n = histIdx - 1; setHistIdx(n); setCmd(history[n]);
+    }
   };
 
-  /* ── Line color ── */
-  const lineColor = (line: string) => {
-    if (!line.trim()) return DIM;
-    if (/error|traceback|exception|failed|fatal/i.test(line)) return '#f87171';
-    if (/warning|warn/i.test(line)) return '#fbbf24';
-    if (/^\s*([$#])\s/.test(line)) return GREEN;
-    if (/success|ok\b|done|complete/i.test(line)) return '#4ade80';
-    return '#e5e7eb';
-  };
+  /* ── line style ── */
+  const lineStyle = (t: ShellLine['type']) => ({
+    cmd:  { color: GREEN,  fontWeight: 600 },
+    out:  { color: '#e6edf3' },
+    err:  { color: '#f87171' },
+    sys:  { color: DIM,    fontSize: 11 },
+    info: { color: MUTED,  fontSize: 11.5 },
+  }[t] ?? { color: '#e6edf3' });
 
-  /* ══════════════════ RENDER ══════════════════════════════════ */
-
-  /* Gate: panel must be running */
+  /* ── gate: panel not running ── */
   if (!isRunning) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: BG, gap: 16, padding: 32 }}>
         <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#1a1f2e', border: `1px solid ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ color: '#e6edf3', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Terminal requires a running panel</div>
-          <div style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6 }}>
-            Start your panel to open a live shell session<br />inside its container environment.
-          </div>
+          <div style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6 }}>Start your panel to open a shell inside its container.</div>
         </div>
-        <button
-          onClick={onStart}
-          disabled={actionLoading || !onStart}
-          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 8, border: 'none', background: GREEN, color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: actionLoading ? 0.6 : 1 }}
-        >
-          {actionLoading
-            ? <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />
-            : <Play style={{ width: 13, height: 13 }} />}
+        <button onClick={onStart} disabled={actionLoading || !onStart}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', borderRadius: 8, border: 'none', background: GREEN, color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: actionLoading ? 0.6 : 1 }}>
+          {actionLoading ? <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} /> : <Play style={{ width: 13, height: 13 }} />}
           {actionLoading ? 'Starting…' : 'Start Panel'}
         </button>
       </div>
     );
   }
 
+  /* ══════════════════ RENDER ══════════════════════════════════ */
   return (
-    <div
-      style={{ flex: 1, display: 'flex', flexDirection: 'column', background: BG, fontFamily: '"JetBrains Mono","Fira Code","Consolas",monospace', minHeight: 0 }}
-      onClick={() => inputRef.current?.focus()}
-    >
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: BG, fontFamily: '"JetBrains Mono","Fira Code","Consolas",monospace', minHeight: 0 }}
+      onClick={() => cmdRef.current?.focus()}>
+
       {/* ── Top bar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderBottom: `1px solid ${BORD}`, background: BAR, flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderBottom: `1px solid ${BORD}`, background: CARD, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', gap: 5 }}>
-            {['#ff5f56','#ffbd2e', ready ? '#27c93f' : '#555'].map((c, i) => (
+            {['#ff5f56','#ffbd2e','#27c93f'].map((c, i) => (
               <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: c }} />
             ))}
           </div>
           <span style={{ fontSize: 11, color: MUTED, letterSpacing: 0.3 }}>
-            {statusLabel === 'init' ? 'connecting…' : statusLabel === 'error' ? 'unavailable' : `${sid} — bash`}
+            shell — {cwd}
           </span>
-          {statusLabel === 'init' && <Loader2 style={{ width: 11, height: 11, color: BLUE, animation: 'spin 1s linear infinite' }} />}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={e => { e.stopPropagation(); sendCtrl('C-c'); }} disabled={!ready}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 5, border: `1px solid ${BORD}`, background: 'transparent', color: ready ? '#f87171' : '#555', fontSize: 10.5, cursor: ready ? 'pointer' : 'default', fontFamily: 'monospace', fontWeight: 600 }}>
-            <Square style={{ width: 9, height: 9 }} /> Ctrl+C
+          <button onClick={e => { e.stopPropagation(); setShowStdin(s => !s); }}
+            title="Toggle stdin input"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 5, border: `1px solid ${showStdin ? BLUE : BORD}`, background: showStdin ? 'rgba(88,166,255,0.1)' : 'transparent', color: showStdin ? BLUE : MUTED, fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}>
+            <Info style={{ width: 9, height: 9 }} /> stdin
           </button>
-          <button onClick={e => { e.stopPropagation(); setReady(false); readyRef.current = false; initSession(); }}
+          <button onClick={e => { e.stopPropagation(); setLines([]); }}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 5, border: `1px solid ${BORD}`, background: 'transparent', color: MUTED, fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}>
-            <RotateCcw style={{ width: 9, height: 9 }} /> Reconnect
+            <Trash2 style={{ width: 9, height: 9 }} /> clear
+          </button>
+          <button onClick={e => { e.stopPropagation(); execCmd(panelId, 'pwd').then(r => { if (r.ok && r.out) setCwd(r.out); }); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 5, border: `1px solid ${BORD}`, background: 'transparent', color: MUTED, fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace', fontWeight: 600 }}>
+            <FolderOpen style={{ width: 9, height: 9 }} /> pwd
           </button>
         </div>
       </div>
 
       {/* ── Output ── */}
       <div ref={bodyRef} onScroll={onScroll}
-        style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', lineHeight: 1.65, fontSize: 12.5, minHeight: 0 }}>
-        {output.map((line, i) => (
-          <div key={i} style={{ color: lineColor(line), whiteSpace: 'pre-wrap', wordBreak: 'break-all', paddingBottom: 1, minHeight: '1em' }}>
-            {line || ' '}
+        style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', lineHeight: 1.7, fontSize: 12.5, minHeight: 0 }}>
+        {lines.map(l => (
+          <div key={l.id} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', paddingBottom: 1, minHeight: '1.1em', ...lineStyle(l.type) }}>
+            {l.text || ' '}
           </div>
         ))}
-        {ready && !sending && (
-          <span style={{ display: 'inline-block', width: 7, height: 13, background: GREEN, opacity: 0.7, animation: 'termBlink 1s step-end infinite', verticalAlign: 'text-bottom', marginLeft: 1 }} />
-        )}
-        {sending && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 4 }}>
-            <Loader2 style={{ width: 11, height: 11, color: GREEN, animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 11, color: DIM }}>sending…</span>
+        {running && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: DIM, fontSize: 11.5, paddingTop: 4 }}>
+            <Loader2 style={{ width: 11, height: 11, animation: 'spin 1s linear infinite' }} /> running…
           </div>
         )}
       </div>
 
-      {/* ── Scroll button ── */}
+      {/* ── Scroll-to-bottom ── */}
       {!atBottom && (
         <button onClick={() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; setAtBottom(true); }}
-          style={{ position: 'absolute', right: 16, bottom: 56, width: 28, height: 28, borderRadius: '50%', background: '#21262d', border: `1px solid ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: MUTED }}>
+          style={{ position: 'absolute', right: 16, bottom: showStdin ? 140 : 56, width: 28, height: 28, borderRadius: '50%', background: '#21262d', border: `1px solid ${BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: MUTED }}>
           <ChevronDown style={{ width: 13, height: 13 }} />
         </button>
       )}
 
-      {/* ── Input row ── */}
-      <div style={{ flexShrink: 0, borderTop: `1px solid ${BORD}`, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, background: BAR }}>
-        <span style={{ color: GREEN, fontSize: 14, fontWeight: 700, flexShrink: 0 }}>❯</span>
-        <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKeyDown}
-          placeholder={!ready ? 'connecting…' : sending ? '' : 'type command or answer…'}
-          disabled={!ready || sending} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
-          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#e6edf3', fontFamily: 'inherit', caretColor: GREEN }} />
-        {sending && <Loader2 style={{ width: 12, height: 12, color: GREEN, animation: 'spin 1s linear infinite' }} />}
-      </div>
+      {/* ── Stdin panel (shown when toggled) ── */}
+      {showStdin && (
+        <div style={{ flexShrink: 0, borderTop: `1px solid ${BORD}`, padding: '8px 12px', background: 'rgba(240,167,38,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+            <span style={{ fontSize: 10.5, color: AMBER, fontWeight: 600 }}>STDIN</span>
+            <span style={{ fontSize: 10.5, color: DIM }}>— typed here will be piped into your command (one answer per line)</span>
+          </div>
+          <textarea
+            ref={stdinRef}
+            value={stdin}
+            onChange={e => setStdin(e.target.value)}
+            placeholder={'e.g. John\n25\nyes'}
+            rows={3}
+            style={{ width: '100%', resize: 'vertical', background: '#0d1117', border: `1px solid ${AMBER}33`, borderRadius: 5, padding: '6px 8px', fontSize: 12, color: '#e6edf3', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+          />
+        </div>
+      )}
 
-      <style>{`@keyframes termBlink { 0%,100%{opacity:0.7} 50%{opacity:0} }`}</style>
+      {/* ── Command input row ── */}
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${BORD}`, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, background: CARD }}>
+        <span style={{ color: GREEN, fontSize: 14, fontWeight: 700, flexShrink: 0 }}>❯</span>
+        <input ref={cmdRef} value={cmd} onChange={e => setCmd(e.target.value)} onKeyDown={onKeyDown}
+          placeholder={running ? 'running…' : 'type a command…'}
+          disabled={running} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: '#e6edf3', fontFamily: 'inherit', caretColor: GREEN }} />
+        {running
+          ? <Loader2 style={{ width: 13, height: 13, color: GREEN, animation: 'spin 1s linear infinite' }} />
+          : <button onClick={run} disabled={!cmd.trim()}
+              style={{ padding: '3px 10px', borderRadius: 5, border: `1px solid ${BORD}`, background: cmd.trim() ? GREEN : 'transparent', color: cmd.trim() ? '#000' : DIM, fontSize: 11, cursor: cmd.trim() ? 'pointer' : 'default', fontWeight: 700 }}>
+              Run
+            </button>
+        }
+      </div>
     </div>
   );
 }
