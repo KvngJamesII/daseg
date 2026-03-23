@@ -74,9 +74,12 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
 
   const bodyRef        = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLInputElement>(null);
-  const suppressUntil  = useRef<number>(0);
-  const prevStatus     = useRef<string>('');
-  const lastPanelId    = useRef<string>('');
+  const suppressUntil   = useRef<number>(0);
+  const prevStatus      = useRef<string>('');
+  const lastPanelId     = useRef<string>('');
+  // Interactive session: replay all answers each run, show only new output
+  const sessionAnswers  = useRef<string[]>([]);
+  const sessionShown    = useRef<number>(0);   // output lines already displayed
 
   const push = (kind: Line['kind'], text: string) =>
     setLines(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, kind, text, ts: Date.now() }]);
