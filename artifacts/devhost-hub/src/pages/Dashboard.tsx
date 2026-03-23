@@ -3,9 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import {
   Server,
@@ -18,11 +16,12 @@ import {
   AlertCircle,
   Terminal,
   Activity,
-  Zap,
   ChevronRight,
   Gift,
   Ticket,
   ShoppingCart,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import { CreatePanelDialog } from '@/components/CreatePanelDialog';
 import {
@@ -32,6 +31,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 interface Panel {
   id: string;
@@ -48,7 +48,15 @@ interface SetupPanelData {
   language: 'nodejs' | 'python';
 }
 
-// Panel limit now comes from profile.panels_limit
+function getInitials(str: string) {
+  return str?.slice(0, 2).toUpperCase() || 'U?';
+}
+
+function daysLeft(expires_at: string | null) {
+  if (!expires_at) return null;
+  const diff = new Date(expires_at).getTime() - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
 
 const Dashboard = () => {
   const { user, profile, isAdmin, isPremium, signOut, loading: authLoading } = useAuth();
@@ -65,15 +73,11 @@ const Dashboard = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
+    if (!authLoading && !user) navigate('/auth');
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (user) {
-      fetchPanels();
-    }
+    if (user) fetchPanels();
   }, [user]);
 
   const fetchPanels = async () => {
@@ -84,11 +88,7 @@ const Dashboard = () => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load panels',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to load panels', variant: 'destructive' });
     } else {
       setPanels(data as Panel[]);
     }
@@ -103,9 +103,7 @@ const Dashboard = () => {
   const handleRedeemCode = async () => {
     if (!redeemCode.trim() || !user) return;
     setRedeeming(true);
-
     try {
-      // Find the code
       const { data: codeData, error: codeError } = await supabase
         .from('redeem_codes')
         .select('*')
@@ -119,14 +117,12 @@ const Dashboard = () => {
         return;
       }
 
-      // Check if max uses reached
       if (codeData.max_uses !== null && codeData.current_uses >= codeData.max_uses) {
         toast({ title: 'Code Expired', description: 'This code has reached its maximum uses', variant: 'destructive' });
         setRedeeming(false);
         return;
       }
 
-      // Check if user already redeemed this code
       const { data: existingRedemption } = await supabase
         .from('code_redemptions')
         .select('id')
@@ -140,7 +136,6 @@ const Dashboard = () => {
         return;
       }
 
-      // Redeem the code - create redemption record
       const { error: redemptionError } = await supabase
         .from('code_redemptions')
         .insert({ code_id: codeData.id, user_id: user.id });
@@ -151,44 +146,32 @@ const Dashboard = () => {
         return;
       }
 
-      // Update code usage count
       await supabase
         .from('redeem_codes')
         .update({ current_uses: codeData.current_uses + 1 })
         .eq('id', codeData.id);
 
-      // Update user profile with premium and panels
       const currentLimit = profile?.panels_limit || 0;
       await supabase
         .from('profiles')
-        .update({ 
-          premium_status: 'approved',
-          panels_limit: currentLimit + codeData.panels_granted 
-        })
+        .update({ premium_status: 'approved', panels_limit: currentLimit + codeData.panels_granted })
         .eq('id', user.id);
 
-      // Calculate expiry date based on code duration
-      const durationHours = codeData.duration_hours || 720; // Default 30 days
+      const durationHours = codeData.duration_hours || 720;
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + durationHours);
 
-      // Create panel(s) automatically with placeholder name
       for (let i = 0; i < codeData.panels_granted; i++) {
         await supabase.from('panels').insert({
           user_id: user.id,
           name: `ClaimedPanel_${Date.now()}_${i}`,
-          language: 'nodejs', // Default, user will change
+          language: 'nodejs',
           expires_at: expiresAt.toISOString(),
         });
       }
 
-      toast({ 
-        title: 'Code Redeemed!', 
-        description: `${codeData.panels_granted} panel(s) created! Click on them to set up.` 
-      });
+      toast({ title: '🎉 Code Redeemed!', description: `${codeData.panels_granted} panel(s) activated! Tap them to set up.` });
       setRedeemCode('');
-      
-      // Refresh panels
       await fetchPanels();
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -197,7 +180,6 @@ const Dashboard = () => {
   };
 
   const handlePanelClick = (panel: Panel) => {
-    // Check if panel needs setup (name starts with ClaimedPanel_)
     if (panel.name.startsWith('ClaimedPanel_')) {
       setSetupPanel({ id: panel.id, name: '', language: 'nodejs' });
       setSetupName('');
@@ -212,7 +194,6 @@ const Dashboard = () => {
       toast({ title: 'Name required', description: 'Please enter a name for your panel', variant: 'destructive' });
       return;
     }
-
     setSavingSetup(true);
     const { error } = await supabase
       .from('panels')
@@ -231,146 +212,144 @@ const Dashboard = () => {
     }
   };
 
-  const getStatusInfo = (status: string) => {
-    switch (status) {
-      case 'running':
-        return { 
-          icon: <Play className="w-3 h-3" />, 
-          text: 'ONLINE',
-          class: 'text-success bg-success/10 border-success/30'
-        };
-      case 'deploying':
-        return { 
-          icon: <Loader2 className="w-3 h-3 animate-spin" />, 
-          text: 'DEPLOYING',
-          class: 'text-warning bg-warning/10 border-warning/30'
-        };
-      case 'error':
-        return { 
-          icon: <AlertCircle className="w-3 h-3" />, 
-          text: 'ERROR',
-          class: 'text-destructive bg-destructive/10 border-destructive/30'
-        };
-      default:
-        return { 
-          icon: <Square className="w-3 h-3" />, 
-          text: 'OFFLINE',
-          class: 'text-muted-foreground bg-muted/30 border-muted'
-        };
-    }
+  const getStatusDot = (status: string) => {
+    if (status === 'running') return 'bg-success shadow-[0_0_6px_1px_hsl(var(--success)/0.6)]';
+    if (status === 'deploying') return 'bg-warning animate-pulse';
+    if (status === 'error') return 'bg-destructive';
+    return 'bg-muted-foreground/40';
+  };
+
+  const getStatusText = (status: string) => {
+    if (status === 'running') return { label: 'ONLINE', cls: 'text-success bg-success/10 border-success/25' };
+    if (status === 'deploying') return { label: 'DEPLOYING', cls: 'text-warning bg-warning/10 border-warning/25' };
+    if (status === 'error') return { label: 'ERROR', cls: 'text-destructive bg-destructive/10 border-destructive/25' };
+    return { label: 'OFFLINE', cls: 'text-muted-foreground bg-muted/30 border-border' };
   };
 
   const runningCount = panels.filter(p => p.status === 'running').length;
+  const panelsLimit = profile?.panels_limit || 0;
+  const canCreatePanel = isPremium && panels.length < panelsLimit;
+  const username = profile?.username || profile?.email?.split('@')[0] || 'user';
 
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Terminal className="w-12 h-12 mx-auto text-primary animate-pulse mb-4" />
-          <p className="text-muted-foreground font-mono text-sm">Initializing...</p>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center">
+            <Terminal className="w-6 h-6 text-primary animate-pulse" />
+          </div>
+          <p className="text-muted-foreground font-mono text-sm">Loading...</p>
         </div>
       </div>
     );
   }
 
-  const panelsLimit = profile?.panels_limit || 0;
-  const canCreatePanel = isPremium && panels.length < panelsLimit;
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Terminal-style Header */}
+
+      {/* ── Header ───────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-border">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-                <Terminal className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h1 className="font-mono font-bold text-lg text-foreground">iDev Host</h1>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Avatar */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/20">
+              <span className="font-mono font-bold text-sm text-primary-foreground">{getInitials(username)}</span>
+            </div>
+            <div>
+              <p className="font-semibold text-sm text-foreground">{username}</p>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${isPremium ? 'bg-warning' : 'bg-muted-foreground/40'}`} />
                 <p className="text-xs text-muted-foreground font-mono">
-                  <span className="text-success">●</span> {profile?.username || profile?.email?.split('@')[0]}
+                  {isPremium ? 'Premium' : 'Free'}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {isAdmin && (
-                <Link to="/admin">
-                  <Button variant="ghost" size="icon" className="h-9 w-9">
-                    <Shield className="w-4 h-4" />
-                  </Button>
-                </Link>
-              )}
-              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleSignOut}>
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {isAdmin && (
+              <Link to="/admin">
+                <Button variant="ghost" size="icon" className="h-9 w-9 text-warning hover:text-warning hover:bg-warning/10">
+                  <Shield className="w-4 h-4" />
+                </Button>
+              </Link>
+            )}
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={handleSignOut}>
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="p-4 pb-24 space-y-6">
-        {/* Stats Bar */}
+      <main className="px-4 pb-24 space-y-5 pt-4">
+
+        {/* ── Stats Row ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-1.5">
+            <div className="flex items-center justify-between">
               <Server className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground font-mono uppercase">Panels</span>
+              <span className="text-xs font-mono text-muted-foreground">PANELS</span>
             </div>
-            <p className="text-2xl font-mono font-bold text-foreground">{panels.length}<span className="text-sm text-muted-foreground">/{profile?.panels_limit || 0}</span></p>
+            <p className="text-2xl font-mono font-bold text-foreground">
+              {panels.length}
+              <span className="text-sm font-normal text-muted-foreground">/{panelsLimit}</span>
+            </p>
           </div>
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
+
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-1.5">
+            <div className="flex items-center justify-between">
               <Activity className="w-4 h-4 text-success" />
-              <span className="text-xs text-muted-foreground font-mono uppercase">Active</span>
+              <span className="text-xs font-mono text-muted-foreground">ONLINE</span>
             </div>
             <p className="text-2xl font-mono font-bold text-success">{runningCount}</p>
           </div>
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
+
+          <div className="bg-card border border-border rounded-2xl p-4 space-y-1.5">
+            <div className="flex items-center justify-between">
               <Zap className="w-4 h-4 text-warning" />
-              <span className="text-xs text-muted-foreground font-mono uppercase">Plan</span>
+              <span className="text-xs font-mono text-muted-foreground">PLAN</span>
             </div>
-            <p className="text-sm font-mono font-bold">
-              <span className={isPremium ? "text-warning" : "text-muted-foreground"}>
-                {isPremium ? 'PREMIUM' : 'FREE'}
-              </span>
+            <p className={`text-sm font-mono font-bold ${isPremium ? 'text-warning' : 'text-muted-foreground'}`}>
+              {isPremium ? 'PRO' : 'FREE'}
             </p>
           </div>
         </div>
 
-        {/* Buy Panel Button - Primary CTA */}
-        <div className="relative overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 p-4">
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(34,197,94,0.03)_50%,transparent_100%)] animate-pulse" />
-          <div className="relative flex items-center justify-between">
+        {/* ── Buy Panels Banner ─────────────────────────────────────────── */}
+        <div
+          className="relative rounded-2xl overflow-hidden cursor-pointer group"
+          onClick={() => navigate('/pricing')}
+        >
+          {/* Background gradient */}
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_right,hsl(var(--primary)/0.15),transparent_70%)]" />
+          <div className="relative border border-primary/25 rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center">
                 <ShoppingCart className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="font-mono font-semibold text-foreground">Purchase Panels</p>
-                <p className="text-xs text-muted-foreground">Get hosting panels with instant activation</p>
+                <p className="font-semibold text-foreground text-sm">Get a Hosting Panel</p>
+                <p className="text-xs text-muted-foreground">From ₦1,400/month · Instant activation</p>
               </div>
             </div>
-            <Button 
-              size="sm" 
-              onClick={() => navigate('/pricing')}
-              className="font-mono bg-primary hover:bg-primary/90"
-            >
-              Buy Now
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg group-hover:bg-primary/20 transition-colors">
+                Buy Now
+              </span>
+              <ChevronRight className="w-4 h-4 text-primary" />
+            </div>
           </div>
         </div>
 
-        {/* Redeem Code Input - Available for ALL users */}
-        <div className="rounded-xl border border-accent/30 bg-accent/5 p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center">
-              <Ticket className="w-5 h-5 text-accent" />
+        {/* ── Redeem Code ───────────────────────────────────────────────── */}
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-accent/15 border border-accent/20 flex items-center justify-center">
+              <Ticket className="w-4 h-4 text-accent" />
             </div>
             <div>
-              <p className="font-mono font-semibold text-foreground">Have a Redeem Code?</p>
-              <p className="text-xs text-muted-foreground">Enter your code to claim panel slots</p>
+              <p className="text-sm font-semibold text-foreground">Redeem Code</p>
+              <p className="text-xs text-muted-foreground">Have a code? Claim your panel slots</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -378,144 +357,167 @@ const Dashboard = () => {
               placeholder="IDEV-XXX-XXX"
               value={redeemCode}
               onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
-              className="font-mono text-sm uppercase"
+              className="font-mono text-sm uppercase tracking-widest flex-1"
               onKeyDown={(e) => e.key === 'Enter' && handleRedeemCode()}
             />
-            <Button 
+            <Button
               onClick={handleRedeemCode}
               disabled={redeeming || !redeemCode.trim()}
-              className="bg-accent hover:bg-accent/90"
+              className="bg-accent hover:bg-accent/90 px-4 shrink-0"
             >
-              {redeeming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
+              {redeeming
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Gift className="w-4 h-4" />}
             </Button>
           </div>
         </div>
 
-        {/* Panels Section */}
-        <div className="space-y-4">
+        {/* ── Panels Section ────────────────────────────────────────────── */}
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="font-mono font-semibold text-lg text-foreground">Panels</h2>
-              <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {panels.length} total
-              </span>
+              <h2 className="font-semibold text-foreground">Your Panels</h2>
+              {panels.length > 0 && (
+                <span className="text-xs font-mono text-muted-foreground bg-muted/60 border border-border px-2 py-0.5 rounded-full">
+                  {panels.length}
+                </span>
+              )}
             </div>
             {canCreatePanel && (
               <Button
                 size="sm"
                 onClick={() => setShowCreateDialog(true)}
-                className="font-mono bg-primary hover:bg-primary/90"
+                className="font-mono bg-primary hover:bg-primary/90 h-8 text-xs gap-1.5"
               >
-                <Plus className="w-4 h-4 mr-1" />
-                New
+                <Plus className="w-3.5 h-3.5" />
+                New Panel
               </Button>
             )}
           </div>
 
-          {panels.length === 0 ? (
-            <div className="border border-dashed border-border rounded-xl p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-muted/50 flex items-center justify-center">
-                <Terminal className="w-8 h-8 text-muted-foreground" />
+          {/* Empty state */}
+          {panels.length === 0 && (
+            <div className="flex flex-col items-center text-center py-12 border border-dashed border-border rounded-2xl bg-muted/20">
+              <div className="w-16 h-16 rounded-2xl bg-muted/60 border border-border flex items-center justify-center mb-4">
+                <Server className="w-7 h-7 text-muted-foreground" />
               </div>
-              <p className="font-mono font-medium mb-1 text-foreground">No Panels Yet</p>
-              <p className="text-sm text-muted-foreground mb-4">
-                {isPremium 
-                  ? 'Create your first panel to start hosting'
-                  : 'Purchase a plan to get started'}
+              <p className="font-semibold text-foreground mb-1">No panels yet</p>
+              <p className="text-sm text-muted-foreground mb-5 max-w-[200px]">
+                {isPremium ? 'Create your first panel to start hosting' : 'Purchase a plan to get started'}
               </p>
               {isPremium ? (
-                <Button
-                  onClick={() => setShowCreateDialog(true)}
-                  className="font-mono bg-primary hover:bg-primary/90"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Create Panel
+                <Button onClick={() => setShowCreateDialog(true)} className="bg-primary hover:bg-primary/90 gap-2">
+                  <Plus className="w-4 h-4" /> Create Panel
                 </Button>
               ) : (
-                <Button
-                  onClick={() => navigate('/pricing')}
-                  className="font-mono bg-primary hover:bg-primary/90"
-                >
-                  <ShoppingCart className="w-4 h-4 mr-1" />
-                  Buy Panels
+                <Button onClick={() => navigate('/pricing')} className="bg-primary hover:bg-primary/90 gap-2">
+                  <ShoppingCart className="w-4 h-4" /> Buy a Panel
                 </Button>
               )}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {panels.map((panel) => {
-                const status = getStatusInfo(panel.status);
-                return (
-                  <div key={panel.id} onClick={() => handlePanelClick(panel)} className="cursor-pointer">
-                    <div className="group relative bg-card border border-border rounded-xl p-4 hover:border-primary/50 hover:bg-card/80 transition-all active:scale-[0.98]">
-                      {/* Status indicator line */}
-                      <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r ${
-                        panel.status === 'running' ? 'bg-success' :
-                        panel.status === 'deploying' ? 'bg-warning' :
-                        panel.status === 'error' ? 'bg-destructive' :
-                        'bg-muted'
-                      }`} />
-                      
-                      <div className="flex items-center gap-4 pl-3">
-                        {/* Language Icon */}
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-mono font-bold text-sm ${
-                          panel.language === 'nodejs'
-                            ? 'bg-nodejs/10 text-nodejs border border-nodejs/30'
-                            : 'bg-python/10 text-python border border-python/30'
-                        }`}>
-                          {panel.language === 'nodejs' ? 'JS' : 'PY'}
-                        </div>
-                        
-                        {/* Panel Info */}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-mono font-medium truncate text-foreground">{panel.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {panel.language === 'nodejs' ? 'Node.js' : 'Python'} • {new Date(panel.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        
-                        {/* Status Badge */}
-                        <div className="flex items-center gap-2">
-                          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-mono ${status.class}`}>
-                            {status.icon}
-                            <span className="hidden sm:inline">{status.text}</span>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           )}
 
-          {panels.length >= panelsLimit && (
-            <p className="text-xs text-muted-foreground text-center font-mono">
-              Maximum panel limit reached ({panelsLimit}/{panelsLimit})
+          {/* Panel cards */}
+          <div className="space-y-2.5">
+            {panels.map((panel) => {
+              const statusText = getStatusText(panel.status);
+              const days = daysLeft(panel.expires_at);
+              const isExpiringSoon = days !== null && days <= 5 && days > 0;
+              const isExpired = days !== null && days <= 0;
+              const needsSetup = panel.name.startsWith('ClaimedPanel_');
+
+              return (
+                <div
+                  key={panel.id}
+                  onClick={() => handlePanelClick(panel)}
+                  className="group relative bg-card border border-border rounded-2xl p-4 cursor-pointer hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 active:scale-[0.99] transition-all"
+                >
+                  {/* Status bar on left */}
+                  <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${
+                    panel.status === 'running' ? 'bg-success' :
+                    panel.status === 'deploying' ? 'bg-warning' :
+                    panel.status === 'error' ? 'bg-destructive' : 'bg-muted/40'
+                  }`} />
+
+                  <div className="flex items-center gap-3 pl-3">
+                    {/* Language badge */}
+                    <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-mono font-black text-sm shrink-0 ${
+                      needsSetup ? 'bg-muted/50 border border-dashed border-border text-muted-foreground' :
+                      panel.language === 'nodejs'
+                        ? 'bg-nodejs/10 border border-nodejs/25 text-nodejs'
+                        : 'bg-python/10 border border-python/25 text-python'
+                    }`}>
+                      <span className="text-base leading-none">
+                        {needsSetup ? '?' : panel.language === 'nodejs' ? 'JS' : 'PY'}
+                      </span>
+                      <span className="text-[9px] opacity-60 leading-none mt-0.5">
+                        {needsSetup ? 'setup' : panel.language === 'nodejs' ? 'node' : 'py'}
+                      </span>
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">
+                        {needsSetup ? 'Tap to configure' : panel.name}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {!needsSetup && (
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {panel.language === 'nodejs' ? 'Node.js' : 'Python'}
+                          </span>
+                        )}
+                        {/* Expiry badge */}
+                        {isExpired && (
+                          <span className="flex items-center gap-1 text-xs text-destructive">
+                            <AlertCircle className="w-3 h-3" /> Expired
+                          </span>
+                        )}
+                        {isExpiringSoon && !isExpired && (
+                          <span className="flex items-center gap-1 text-xs text-warning">
+                            <Clock className="w-3 h-3" /> {days}d left
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status + arrow */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!needsSetup && (
+                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-semibold ${statusText.cls}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${getStatusDot(panel.status)}`} />
+                          <span className="hidden sm:inline">{statusText.label}</span>
+                        </div>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {panels.length > 0 && panels.length >= panelsLimit && panelsLimit > 0 && (
+            <p className="text-xs text-center text-muted-foreground font-mono pt-1">
+              Panel limit reached ({panelsLimit}/{panelsLimit}) ·{' '}
+              <span className="text-primary cursor-pointer hover:underline" onClick={() => navigate('/pricing')}>
+                Upgrade to add more
+              </span>
             </p>
           )}
         </div>
 
-        {/* Terminal Footer */}
-        <div className="bg-card border border-border rounded-xl p-4 font-mono text-xs">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <span className="text-success">➜</span>
-            <span className="text-primary">~</span>
-            <span className="animate-pulse">|</span>
-          </div>
-          <p className="text-muted-foreground mt-2">
-            Ready to deploy. Create a panel to get started.
-          </p>
+        {/* ── Terminal footer ───────────────────────────────────────────── */}
+        <div className="font-mono text-xs text-muted-foreground bg-card/50 border border-border/50 rounded-xl px-4 py-3">
+          <span className="text-primary">$</span>{' '}
+          <span className="text-muted-foreground/70">idevhost status</span>
+          <br />
+          <span className="text-success">✓</span> {runningCount} panel{runningCount !== 1 ? 's' : ''} running · {panels.length} total
         </div>
       </main>
 
-      <CreatePanelDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onCreated={fetchPanels}
-      />
-      {/* Setup Claimed Panel Dialog */}
+      <CreatePanelDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} onCreated={fetchPanels} />
+
+      {/* Setup Dialog */}
       <Dialog open={!!setupPanel} onOpenChange={(open) => !open && setSetupPanel(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -523,59 +525,46 @@ const Dashboard = () => {
               <Terminal className="w-5 h-5 text-primary" />
               Configure Your Panel
             </DialogTitle>
-            <DialogDescription>
-              Set up your claimed panel with a name and programming language
-            </DialogDescription>
+            <DialogDescription>Give your panel a name and choose its runtime</DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-4">
+
+          <div className="py-4 space-y-5">
             <div className="space-y-2">
               <Label htmlFor="panel-name">Panel Name</Label>
               <Input
                 id="panel-name"
-                placeholder="My Awesome App"
+                placeholder="my-discord-bot"
                 value={setupName}
                 onChange={(e) => setSetupName(e.target.value)}
+                className="font-mono"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Programming Language</Label>
+              <Label>Runtime</Label>
               <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSetupLanguage('nodejs')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    setupLanguage === 'nodejs'
-                      ? 'border-nodejs bg-nodejs/10'
-                      : 'border-border hover:border-nodejs/50'
-                  }`}
-                >
-                  <div className="text-center">
-                    <span className="font-mono font-bold text-2xl text-nodejs">JS</span>
-                    <p className="text-sm text-muted-foreground mt-1">Node.js</p>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSetupLanguage('python')}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    setupLanguage === 'python'
-                      ? 'border-python bg-python/10'
-                      : 'border-border hover:border-python/50'
-                  }`}
-                >
-                  <div className="text-center">
-                    <span className="font-mono font-bold text-2xl text-python">PY</span>
-                    <p className="text-sm text-muted-foreground mt-1">Python</p>
-                  </div>
-                </button>
+                {([
+                  { key: 'nodejs', code: 'JS', label: 'Node.js', color: 'nodejs' },
+                  { key: 'python', code: 'PY', label: 'Python', color: 'python' },
+                ] as const).map(({ key, code, label, color }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSetupLanguage(key)}
+                    className={`p-4 rounded-xl border-2 transition-all text-center ${
+                      setupLanguage === key ? `border-${color} bg-${color}/10` : 'border-border hover:border-border/70'
+                    }`}
+                  >
+                    <span className={`font-mono font-black text-2xl block text-${color}`}>{code}</span>
+                    <p className="text-sm text-muted-foreground mt-1">{label}</p>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
+
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setSetupPanel(null)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setSetupPanel(null)}>Cancel</Button>
             <Button
               className="bg-primary hover:bg-primary/90"
               onClick={handleSaveSetup}

@@ -39,11 +39,11 @@ const CPU_OPTIONS = [0.5, 1, 1.5, 2];
 const CPU_BASE = 0.5;
 const CPU_PRICE_PER_QUARTER = 30000; // ₦300 per 0.25 core
 
-// Storage: ₦100 per extra 512MB above 1GB
+// Storage: ₦500 per extra 512MB above 1GB (max 4GB)
 const STORAGE_MIN = 1024;  // MB
-const STORAGE_MAX = 8192;  // MB
+const STORAGE_MAX = 4096;  // MB
 const STORAGE_STEP = 512;
-const STORAGE_EXTRA_PER_SLAB = 10000; // ₦100 per 512MB slab
+const STORAGE_EXTRA_PER_SLAB = 50000; // ₦500 per 512MB slab
 
 function calcTotal(ramMb: number, cpuCores: number, storageMb: number): number {
   const ramExtra = Math.max(0, Math.floor((ramMb - RAM_MIN) / RAM_STEP)) * RAM_EXTRA_PER_SLAB;

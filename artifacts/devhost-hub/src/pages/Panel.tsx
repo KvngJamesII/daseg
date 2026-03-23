@@ -4,8 +4,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { vmApi, AppStatus } from '@/lib/vmApi';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -23,7 +21,7 @@ import {
   MemoryStick,
   Clock,
   RotateCcw,
-  CalendarClock,
+  ShoppingCart,
 } from 'lucide-react';
 import { FileManager } from '@/components/panel/FileManager';
 import { UnifiedConsole } from '@/components/panel/UnifiedConsole';
@@ -51,6 +49,31 @@ interface Panel {
   expires_at?: string | null;
 }
 
+function formatUptime(ms: number): string {
+  if (ms <= 0 || ms > 365 * 24 * 60 * 60 * 1000) return '—';
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+  if (d > 0) return `${d}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m % 60}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
+function MetricBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const pct = Math.min(100, (value / max) * 100);
+  const warn = pct > 80;
+  return (
+    <div className="w-full h-1.5 rounded-full bg-muted/60 overflow-hidden mt-1.5">
+      <div
+        className={`h-full rounded-full transition-all ${warn ? 'bg-warning' : color}`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
 const PanelPage = () => {
   const { id } = useParams<{ id: string }>();
   const { user, loading: authLoading } = useAuth();
@@ -65,15 +88,11 @@ const PanelPage = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
+    if (!authLoading && !user) navigate('/auth');
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (id && user) {
-      fetchPanel();
-    }
+    if (id && user) fetchPanel();
   }, [id, user]);
 
   const fetchPanel = async () => {
@@ -85,11 +104,7 @@ const PanelPage = () => {
       .single();
 
     if (error || !data) {
-      toast({
-        title: 'Error',
-        description: 'Panel not found',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Panel not found', variant: 'destructive' });
       navigate('/dashboard');
     } else {
       setPanel(data as Panel);
@@ -102,32 +117,25 @@ const PanelPage = () => {
     try {
       const status = await vmApi.getStatus(id);
       setVmStatus(status);
-      // Only sync to DB if status meaningfully changed and is stable
       if (status.status && status.status !== panel.status) {
         await supabase.from('panels').update({ status: status.status }).eq('id', id);
         setPanel(prev => prev ? { ...prev, status: status.status } : prev);
       }
-    } catch (error) {
-      console.error('Failed to fetch VM status:', error);
-      // Don't update status on error - keep existing state
-    }
+    } catch { /* keep existing */ }
   };
 
   useEffect(() => {
     if (panel) {
       fetchVmStatus();
-      const interval = setInterval(fetchVmStatus, 10000); // Poll every 10s
+      const interval = setInterval(fetchVmStatus, 10000);
       return () => clearInterval(interval);
     }
   }, [panel?.id]);
 
-  // Live uptime counter - updates every minute
   useEffect(() => {
     if (vmStatus?.uptime && vmStatus?.status === 'running') {
       setLiveUptime(vmStatus.uptime);
-      const interval = setInterval(() => {
-        setLiveUptime(prev => prev + 60000);
-      }, 60000);
+      const interval = setInterval(() => setLiveUptime(p => p + 60000), 60000);
       return () => clearInterval(interval);
     } else {
       setLiveUptime(0);
@@ -137,62 +145,25 @@ const PanelPage = () => {
   const handleStart = async () => {
     if (!id || !panel) return;
     setActionLoading(true);
-    
     try {
       await supabase.from('panels').update({ status: 'deploying' }).eq('id', id);
       setPanel({ ...panel, status: 'deploying' });
-      
-      // Log deployment start
-      await supabase.from('panel_logs').insert({
-        panel_id: id,
-        message: 'Starting deployment...',
-        log_type: 'info',
-      });
-      
-      // First deploy (setup directory, install deps)
+      await supabase.from('panel_logs').insert({ panel_id: id, message: 'Starting deployment...', log_type: 'info' });
       await vmApi.deploy(id, panel.language);
-      
-      await supabase.from('panel_logs').insert({
-        panel_id: id,
-        message: 'Dependencies installed, starting application...',
-        log_type: 'info',
-      });
-      
-      // Get the entry point (use custom or default)
+      await supabase.from('panel_logs').insert({ panel_id: id, message: 'Dependencies installed, starting app...', log_type: 'info' });
       const entryPoint = panel.entry_point || (panel.language === 'python' ? 'main.py' : 'index.js');
-      
-      // Then start the PM2 process with entry point
       const result = await vmApi.start(id, panel.language, entryPoint);
-      
       await supabase.from('panels').update({ status: 'running' }).eq('id', id);
-      await supabase.from('panel_logs').insert({
-        panel_id: id,
-        message: `Panel started successfully on port ${result.port} (entry: ${entryPoint})`,
-        log_type: 'success',
-      });
-      
+      await supabase.from('panel_logs').insert({ panel_id: id, message: `Started on port ${result.port} (${entryPoint})`, log_type: 'success' });
       setPanel({ ...panel, status: 'running' });
-      toast({
-        title: 'Success',
-        description: result.message || 'Panel is now running',
-      });
+      toast({ title: 'Panel started', description: result.message || 'Now running' });
       fetchVmStatus();
     } catch (error: any) {
-      const errorMessage = error.message || 'Failed to start panel';
-      
+      const msg = error.message || 'Failed to start';
       await supabase.from('panels').update({ status: 'error' }).eq('id', id);
-      await supabase.from('panel_logs').insert({
-        panel_id: id,
-        message: `Startup failed: ${errorMessage}`,
-        log_type: 'error',
-      });
-      
+      await supabase.from('panel_logs').insert({ panel_id: id, message: `Error: ${msg}`, log_type: 'error' });
       setPanel({ ...panel, status: 'error' });
-      toast({
-        title: 'Startup Failed',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast({ title: 'Startup Failed', description: msg, variant: 'destructive' });
     }
     setActionLoading(false);
   };
@@ -200,26 +171,13 @@ const PanelPage = () => {
   const handleRestart = async () => {
     if (!id || !panel) return;
     setActionLoading(true);
-    
     try {
       await vmApi.restart(id);
-      await supabase.from('panel_logs').insert({
-        panel_id: id,
-        message: 'Panel restarted',
-        log_type: 'info',
-      });
-      
-      toast({
-        title: 'Success',
-        description: 'Panel restarted',
-      });
+      await supabase.from('panel_logs').insert({ panel_id: id, message: 'Panel restarted', log_type: 'info' });
+      toast({ title: 'Restarted', description: 'Panel restarted successfully' });
       fetchVmStatus();
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to restart panel',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
     setActionLoading(false);
   };
@@ -227,75 +185,34 @@ const PanelPage = () => {
   const handleStop = async () => {
     if (!id || !panel) return;
     setActionLoading(true);
-    
     try {
       await vmApi.stop(id);
       await supabase.from('panels').update({ status: 'stopped' }).eq('id', id);
-      await supabase.from('panel_logs').insert({
-        panel_id: id,
-        message: 'Panel stopped',
-        log_type: 'info',
-      });
-      
+      await supabase.from('panel_logs').insert({ panel_id: id, message: 'Panel stopped', log_type: 'info' });
       setPanel({ ...panel, status: 'stopped' });
-      toast({
-        title: 'Success',
-        description: 'Panel stopped',
-      });
+      toast({ title: 'Stopped', description: 'Panel stopped' });
       fetchVmStatus();
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to stop panel',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     }
     setActionLoading(false);
   };
 
   const handleDelete = async () => {
     if (!id) return;
-    
-    try {
-      // Delete from VM first
-      await vmApi.delete(id);
-    } catch (error) {
-      console.error('VM delete error (may not exist):', error);
-    }
-    
+    try { await vmApi.delete(id); } catch { }
     const { error } = await supabase.from('panels').delete().eq('id', id);
-
     if (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete panel',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to delete panel', variant: 'destructive' });
     } else {
-      toast({
-        title: 'Deleted',
-        description: 'Panel has been deleted',
-      });
+      toast({ title: 'Deleted', description: 'Panel deleted' });
       navigate('/dashboard');
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'running':
-        return <Badge className="bg-success text-success-foreground">Running</Badge>;
-      case 'deploying':
-        return <Badge className="bg-warning text-warning-foreground">Deploying</Badge>;
-      case 'error':
-        return <Badge variant="destructive">Error</Badge>;
-      default:
-        return <Badge variant="secondary">Stopped</Badge>;
     }
   };
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -303,274 +220,258 @@ const PanelPage = () => {
 
   if (!panel) return null;
 
-  const formatUptime = (ms: number): string => {
-    // Sanity check - if uptime is negative or unreasonably large (> 1 year), show 0
-    if (ms <= 0 || ms > 365 * 24 * 60 * 60 * 1000) return '0s';
-    
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0) return `${minutes}m`;
-    return `${seconds}s`;
-  };
-
   const effectiveStatus = (vmStatus?.status ?? panel.status) as Panel['status'];
+  const isRunning = effectiveStatus === 'running';
+  const isDeploying = effectiveStatus === 'deploying';
+  const memMB = vmStatus?.memory ? vmStatus.memory / 1024 / 1024 : 0;
+  const recentRestarts = (vmStatus as any)?.restarts_recent_3h ?? 0;
+  const restartLimitHit = (vmStatus as any)?.restart_limit_hit ?? false;
+  const langColor = panel.language === 'nodejs' ? 'nodejs' : 'python';
+  const langCode = panel.language === 'nodejs' ? 'JS' : 'PY';
+
+  const statusConfig = {
+    running:   { dot: 'bg-success shadow-[0_0_6px_1px_hsl(var(--success)/0.5)]', badge: 'text-success bg-success/10 border-success/25', label: 'Online' },
+    deploying: { dot: 'bg-warning animate-pulse', badge: 'text-warning bg-warning/10 border-warning/25', label: 'Deploying' },
+    error:     { dot: 'bg-destructive', badge: 'text-destructive bg-destructive/10 border-destructive/25', label: 'Error' },
+    stopped:   { dot: 'bg-muted-foreground/40', badge: 'text-muted-foreground bg-muted/30 border-border', label: 'Offline' },
+  }[effectiveStatus] ?? { dot: 'bg-muted-foreground/40', badge: 'text-muted-foreground bg-muted/30 border-border', label: 'Unknown' };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border px-4 py-3">
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-lg border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to="/dashboard">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="w-5 h-5" />
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                panel.language === 'nodejs' ? 'bg-nodejs/10 text-nodejs' : 'bg-python/10 text-python'
-              }`}
-            >
-              <span className="font-mono font-bold text-xs">
-                {panel.language === 'nodejs' ? 'JS' : 'PY'}
-              </span>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-mono font-black text-sm bg-${langColor}/10 border border-${langColor}/25 text-${langColor}`}>
+              {langCode}
             </div>
             <div>
-              <h1 className="font-semibold text-sm">{panel.name}</h1>
-              <p className="text-xs text-muted-foreground">
+              <h1 className="font-semibold text-sm text-foreground leading-none">{panel.name}</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {panel.language === 'nodejs' ? 'Node.js' : 'Python'}
                 {panel.expires_at && (
-                  <span className={`ml-2 ${new Date(panel.expires_at) < new Date() ? 'text-destructive' : new Date(panel.expires_at) < new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) ? 'text-warning' : ''}`}>
-                    • Expires {new Date(panel.expires_at).toLocaleDateString()}
+                  <span className={`ml-1.5 ${new Date(panel.expires_at) < new Date() ? 'text-destructive' : new Date(panel.expires_at) < new Date(Date.now() + 3 * 86400000) ? 'text-warning' : ''}`}>
+                    · Expires {new Date(panel.expires_at).toLocaleDateString()}
                   </span>
                 )}
               </p>
             </div>
           </div>
-          {getStatusBadge(effectiveStatus)}
+
+          {/* Status badge */}
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-mono font-semibold ${statusConfig.badge}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`} />
+            {statusConfig.label}
+          </div>
         </div>
       </header>
 
       {/* Renewal Warning */}
       <RenewalWarning panelId={panel.id} expiresAt={panel.expires_at ?? null} />
 
-      {/* Action Bar */}
-      <div className="px-4 py-3 border-b border-border bg-card/50">
-        <div className="flex items-center gap-2">
+      {/* Restart limit banner */}
+      {restartLimitHit && effectiveStatus === 'stopped' && (
+        <div className="px-4 py-3 bg-destructive/5 border-b border-destructive/20">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-destructive">Auto-stopped: restart limit exceeded</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Your app restarted more than 10 times in 3 hours. Fix your code or upgrade your plan for more RAM.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" className="shrink-0 h-7 text-xs border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => navigate('/pricing')}>
+              <ShoppingCart className="w-3 h-3 mr-1" /> Upgrade
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Action Bar ──────────────────────────────────────────────────── */}
+      <div className="px-4 py-3 border-b border-border bg-card/40">
+        <div className="flex gap-2">
+          {/* Start */}
           <Button
             size="sm"
             onClick={handleStart}
-            disabled={actionLoading || effectiveStatus === 'running' || effectiveStatus === 'deploying'}
-            className="flex-1 bg-gradient-primary hover:opacity-90 disabled:opacity-50"
+            disabled={actionLoading || isRunning || isDeploying}
+            className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-40 h-9 gap-1.5"
           >
-            {actionLoading && effectiveStatus !== 'running' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-1" />
-                Start
-              </>
-            )}
+            {actionLoading && !isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+            Start
           </Button>
+
+          {/* Restart */}
           <Button
-            variant="outline"
             size="sm"
+            variant="outline"
             onClick={handleRestart}
-            disabled={actionLoading || effectiveStatus !== 'running'}
-            className="flex-1"
+            disabled={actionLoading || !isRunning}
+            className="flex-1 h-9 gap-1.5 disabled:opacity-40"
           >
-            {actionLoading && effectiveStatus === 'running' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Restart
-              </>
-            )}
+            {actionLoading && isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Restart
           </Button>
+
+          {/* Stop */}
           <Button
-            variant="outline"
             size="sm"
+            variant="outline"
             onClick={() => setShowStopDialog(true)}
-            disabled={actionLoading || effectiveStatus !== 'running'}
-            className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 hover:border-destructive"
+            disabled={actionLoading || !isRunning}
+            className="flex-1 h-9 gap-1.5 disabled:opacity-40 border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50"
           >
-            <Square className="w-4 h-4 mr-1" />
+            <Square className="w-3.5 h-3.5" />
             Stop
           </Button>
+
+          {/* Delete */}
           <Button
-            variant="outline"
             size="sm"
+            variant="ghost"
             onClick={() => setShowDeleteDialog(true)}
-            className="text-destructive hover:text-destructive"
+            className="h-9 w-9 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>
 
-      {/* Resource Metrics */}
-      {vmStatus && effectiveStatus === 'running' && (
-        <div className="px-4 py-3 border-b border-border bg-card/30">
-          <div className="grid grid-cols-4 gap-3">
-            <div className="flex flex-col items-center p-2 rounded-lg bg-muted/50">
-              <Cpu className="w-4 h-4 text-primary mb-1" />
-              <span className="text-xs text-muted-foreground">CPU</span>
-              <span className="text-sm font-semibold">{vmStatus.cpu?.toFixed(1) ?? 0}%</span>
-            </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-muted/50">
-              <MemoryStick className="w-4 h-4 text-primary mb-1" />
-              <span className="text-xs text-muted-foreground">Memory</span>
-              <span className="text-sm font-semibold">
-                {vmStatus.memory ? `${(vmStatus.memory / 1024 / 1024).toFixed(1)}MB` : '0MB'}
-              </span>
-            </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-muted/50">
-              <Clock className="w-4 h-4 text-primary mb-1" />
-              <span className="text-xs text-muted-foreground">Uptime</span>
-              <span className="text-sm font-semibold">
-                {formatUptime(liveUptime)}
-              </span>
-            </div>
-            <div className={`flex flex-col items-center p-2 rounded-lg ${
-              (vmStatus as any).restarts_recent_3h > 7 ? 'bg-warning/15 border border-warning/30' : 'bg-muted/50'
-            }`}>
-              <RotateCcw className={`w-4 h-4 mb-1 ${(vmStatus as any).restarts_recent_3h > 7 ? 'text-warning' : 'text-primary'}`} />
-              <span className="text-xs text-muted-foreground">Restarts</span>
-              <span className={`text-sm font-semibold ${(vmStatus as any).restarts_recent_3h > 7 ? 'text-warning' : ''}`}>
-                {vmStatus.restarts ?? 0}
-              </span>
-            </div>
-          </div>
-          {/* Restart limit warning */}
-          {(vmStatus as any).restarts_recent_3h > 7 && (
-            <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/30">
-              <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-              <div className="text-xs">
-                <p className="text-warning font-semibold">High restart rate detected</p>
-                <p className="text-muted-foreground">
-                  {(vmStatus as any).restarts_recent_3h}/10 restarts in the last 3 hours.
-                  At 10 restarts the panel will be automatically stopped.
-                  Consider upgrading your plan or optimizing your app.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Panel stopped due to restart limit */}
-      {effectiveStatus === 'stopped' && (vmStatus as any)?.restart_limit_hit && (
-        <div className="px-4 py-3 border-b border-border">
-          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30">
-            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <p className="text-destructive font-semibold">Panel auto-stopped</p>
-              <p className="text-muted-foreground">
-                This panel exceeded 10 restarts in 3 hours and was automatically stopped to protect the server.
-                Please review your app's code or consider upgrading to a higher-RAM plan.
+      {/* ── Resource Metrics ────────────────────────────────────────────── */}
+      {vmStatus && isRunning && (
+        <div className="px-4 py-3 border-b border-border bg-card/20">
+          {/* Warning: high restarts */}
+          {recentRestarts > 7 && (
+            <div className="flex items-start gap-2 p-2.5 rounded-xl bg-warning/10 border border-warning/25 mb-3">
+              <AlertCircle className="w-3.5 h-3.5 text-warning shrink-0 mt-0.5" />
+              <p className="text-xs text-warning">
+                <span className="font-semibold">{recentRestarts}/10 restarts</span> in the last 3 hours — auto-stop will trigger at 10.
               </p>
             </div>
+          )}
+
+          <div className="grid grid-cols-4 gap-2">
+            {/* CPU */}
+            <div className="bg-card border border-border rounded-xl p-3">
+              <div className="flex items-center justify-between mb-0.5">
+                <Cpu className="w-3.5 h-3.5 text-primary" />
+                <span className="text-xs font-mono font-bold text-foreground">{vmStatus.cpu?.toFixed(1) ?? 0}%</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">CPU</p>
+              <MetricBar value={vmStatus.cpu ?? 0} max={100} color="bg-primary" />
+            </div>
+
+            {/* Memory */}
+            <div className="bg-card border border-border rounded-xl p-3">
+              <div className="flex items-center justify-between mb-0.5">
+                <MemoryStick className="w-3.5 h-3.5 text-primary" />
+                <span className="text-xs font-mono font-bold text-foreground">{memMB.toFixed(0)}MB</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">RAM</p>
+              <MetricBar value={memMB} max={512} color="bg-primary" />
+            </div>
+
+            {/* Uptime */}
+            <div className="bg-card border border-border rounded-xl p-3">
+              <div className="flex items-center justify-between mb-0.5">
+                <Clock className="w-3.5 h-3.5 text-success" />
+                <span className="text-xs font-mono font-bold text-foreground">{formatUptime(liveUptime)}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Uptime</p>
+              <div className="w-full h-1.5 rounded-full bg-success/20 mt-1.5">
+                <div className="h-full w-full rounded-full bg-success/40 animate-pulse" />
+              </div>
+            </div>
+
+            {/* Restarts */}
+            <div className={`border rounded-xl p-3 ${recentRestarts > 7 ? 'bg-warning/10 border-warning/25' : 'bg-card border-border'}`}>
+              <div className="flex items-center justify-between mb-0.5">
+                <RotateCcw className={`w-3.5 h-3.5 ${recentRestarts > 7 ? 'text-warning' : 'text-primary'}`} />
+                <span className={`text-xs font-mono font-bold ${recentRestarts > 7 ? 'text-warning' : 'text-foreground'}`}>
+                  {vmStatus.restarts ?? 0}
+                </span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Restarts</p>
+              <MetricBar value={recentRestarts} max={10} color={recentRestarts > 5 ? 'bg-warning' : 'bg-primary'} />
+            </div>
           </div>
         </div>
       )}
 
-      {/* Main Content */}
+      {/* ── Tabs ────────────────────────────────────────────────────────── */}
       <Tabs defaultValue="console" className="flex-1 flex flex-col">
-        <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent h-auto p-0 overflow-x-auto">
-          <TabsTrigger
-            value="console"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 sm:px-4 py-3"
-          >
-            <Terminal className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Console</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="files"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 sm:px-4 py-3"
-          >
-            <FolderOpen className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Files</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="startup"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 sm:px-4 py-3"
-          >
-            <Play className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Startup</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-3 sm:px-4 py-3"
-          >
-            <Settings className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Settings</span>
-          </TabsTrigger>
+        <TabsList className="w-full justify-start rounded-none border-b border-border bg-card/40 h-auto p-0 overflow-x-auto shrink-0">
+          {[
+            { value: 'console', icon: Terminal, label: 'Console' },
+            { value: 'files', icon: FolderOpen, label: 'Files' },
+            { value: 'startup', icon: Play, label: 'Startup' },
+            { value: 'settings', icon: Settings, label: 'Settings' },
+          ].map(({ value, icon: Icon, label }) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="console" className="flex-1 m-0">
           <UnifiedConsole panelId={panel.id} panelStatus={effectiveStatus} />
         </TabsContent>
-
         <TabsContent value="files" className="flex-1 m-0">
           <FileManager panelId={panel.id} />
         </TabsContent>
-
         <TabsContent value="startup" className="flex-1 m-0 overflow-y-auto">
           <StartupSettings panel={panel} onUpdate={fetchPanel} />
         </TabsContent>
-
         <TabsContent value="settings" className="flex-1 m-0 overflow-y-auto">
           <PanelSettings panel={panel} onUpdate={fetchPanel} />
         </TabsContent>
       </Tabs>
 
-      {/* Stop Confirmation */}
+      {/* ── Dialogs ─────────────────────────────────────────────────────── */}
       <AlertDialog open={showStopDialog} onOpenChange={setShowStopDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Stop Panel?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will stop "{panel.name}". You can restart it anytime.
-            </AlertDialogDescription>
+            <AlertDialogTitle>Stop "{panel.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>This will stop the panel. You can restart it anytime.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                setShowStopDialog(false);
-                handleStop();
-              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setShowStopDialog(false); handleStop(); }}
             >
-              Stop
+              Stop Panel
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Panel?</AlertDialogTitle>
+            <AlertDialogTitle>Delete "{panel.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{panel.name}" and all associated files and logs. This
-              action cannot be undone.
+              This permanently deletes the panel and all its files. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDelete}
             >
-              Delete
+              Delete Forever
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
