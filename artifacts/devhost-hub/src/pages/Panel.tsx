@@ -7,10 +7,11 @@ import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft, Play, Square, Loader2, FolderOpen, Terminal,
   Settings, AlertCircle, RefreshCw, Cpu, MemoryStick, Clock,
-  RotateCcw, ShoppingCart, Maximize2, Minimize2,
+  RotateCcw, ShoppingCart, Maximize2, Minimize2, SquareTerminal,
 } from 'lucide-react';
 import { FileManager } from '@/components/panel/FileManager';
 import { UnifiedConsole } from '@/components/panel/UnifiedConsole';
+import { InteractiveTerminal } from '@/components/panel/InteractiveTerminal';
 import { StartupSettings } from '@/components/panel/StartupSettings';
 import { PanelSettings } from '@/components/panel/PanelSettings';
 import { RenewalWarning } from '@/components/panel/RenewalWarning';
@@ -92,7 +93,7 @@ const PanelPage = () => {
   const [showStopDialog, setSD]       = useState(false);
   const [liveUptime, setLiveUptime]   = useState(0);
   const [consoleExpanded, setCE]      = useState(false);
-  const [activeTab, setActiveTab]     = useState<'console'|'files'|'startup'|'settings'>('console');
+  const [activeTab, setActiveTab]     = useState<'console'|'files'|'terminal'|'startup'|'settings'>('console');
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -249,10 +250,11 @@ const PanelPage = () => {
   }[effectiveStatus] ?? { color: '#555', glow: 'none', label: 'Unknown', pulse: false };
 
   const TABS = [
-    { id: 'console',  Icon: Terminal,   label: 'Console'  },
-    { id: 'files',    Icon: FolderOpen, label: 'Files'    },
-    { id: 'startup',  Icon: Play,       label: 'Startup'  },
-    { id: 'settings', Icon: Settings,   label: 'Settings' },
+    { id: 'console',  Icon: Terminal,        label: 'Logs'     },
+    { id: 'terminal', Icon: SquareTerminal,  label: 'Terminal' },
+    { id: 'files',    Icon: FolderOpen,      label: 'Files'    },
+    { id: 'startup',  Icon: Play,            label: 'Startup'  },
+    { id: 'settings', Icon: Settings,        label: 'Settings' },
   ] as const;
 
   return (
@@ -363,7 +365,7 @@ const PanelPage = () => {
       </div>
 
       {/* ══ EQUAL-WIDTH TAB BAR (no underline slider) ═══════════════ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${BORDER}`, background: CARD, flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: `1px solid ${BORDER}`, background: CARD, flexShrink: 0 }}>
         {TABS.map(({ id: tid, Icon, label }) => {
           const active = activeTab === tid;
           return (
@@ -371,8 +373,8 @@ const PanelPage = () => {
               key={tid}
               onClick={() => setActiveTab(tid as typeof activeTab)}
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                padding: '11px 4px', fontSize: 12.5, fontWeight: active ? 700 : 500,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                padding: '11px 2px', fontSize: 11.5, fontWeight: active ? 700 : 500,
                 color: active ? GREEN : MUTED,
                 background: active ? `${GREEN}0d` : 'none',
                 border: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -427,6 +429,7 @@ const PanelPage = () => {
           </div>
         )}
 
+        {activeTab === 'terminal' && <InteractiveTerminal panelId={panel.id} />}
         {activeTab === 'files' && <FileManager panelId={panel.id} />}
         {activeTab === 'startup' && (
           <div style={{ flex: 1, overflowY: 'auto' }}>
