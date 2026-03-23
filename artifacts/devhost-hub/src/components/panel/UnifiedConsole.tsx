@@ -148,8 +148,18 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
 
     if (trimmed === 'clear') { setLines([]); return; }
     if (trimmed === 'help') {
-      push('out', 'Available: any shell command  •  clear  •  help');
-      push('out', 'Tip: pipe inputs for interactive scripts →  echo "John" | python main.py');
+      push('out', 'Shell commands: ls, cat, pip install <pkg>, python main.py, clear');
+      push('out', 'Note: this terminal runs NEW commands — it does not send input to your running app.');
+      push('out', 'To test interactive scripts, pipe the input:  echo "2" | python main.py');
+      return;
+    }
+
+    /* Detect likely "app input" mistake while panel is running */
+    const looksLikeData = panelStatus === 'running' && /^[\w\s.,!?-]+$/.test(trimmed) && !/\s/.test(trimmed.replace(/^[\d.]+$/, ''));
+    if (looksLikeData && /^\d+(\.\d+)?$/.test(trimmed)) {
+      push('err', `"${trimmed}" looks like data, not a shell command.`);
+      push('sys', 'This terminal runs shell commands, not stdin to your app.');
+      push('sys', `To pass input to your script:  echo "${trimmed}" | python main.py`);
       return;
     }
 
@@ -165,7 +175,13 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
         push('out', '(no output)');
       }
     } catch (e: any) {
-      push('err', `Error: ${e.message}`);
+      const msg = e.message || '';
+      if (msg.includes('non-2xx') || msg.includes('Edge Function')) {
+        push('err', 'Command failed — the server rejected the request.');
+        push('sys', 'Make sure your command is valid bash. Example: ls, cat main.py, python --version');
+      } else {
+        push('err', `Error: ${msg}`);
+      }
     }
     setRunning(false);
   };
@@ -274,6 +290,17 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
         </button>
       )}
 
+      {/* Shell-not-stdin notice — only shown while panel is running */}
+      {panelStatus === 'running' && (
+        <div style={{ flexShrink: 0, padding: '5px 12px', background: 'rgba(96,165,250,0.06)', borderTop: '1px solid rgba(96,165,250,0.12)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: '#60a5fa', fontFamily: 'monospace' }}>ℹ</span>
+          <span style={{ fontSize: 10.5, color: '#60a5fa', opacity: 0.8 }}>
+            Shell terminal — runs commands, not app stdin. To test input:&nbsp;
+            <code style={{ background: 'rgba(96,165,250,0.12)', borderRadius: 3, padding: '0 4px', fontSize: 10 }}>echo "answer" | python main.py</code>
+          </span>
+        </div>
+      )}
+
       {/* Input */}
       <div style={{ flexShrink: 0, borderTop: '1px solid #21262d', padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 8, background: '#161b22' }}>
         <span style={{ color: '#3fb950', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>$</span>
@@ -282,7 +309,7 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={running ? '' : 'type a command…'}
+          placeholder={running ? '' : panelStatus === 'running' ? 'shell command (ls, cat, pip install…)' : 'type a command…'}
           disabled={running}
           autoComplete="off"
           spellCheck={false}
