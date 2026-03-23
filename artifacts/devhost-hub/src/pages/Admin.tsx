@@ -136,9 +136,8 @@ interface Stats {
 }
 
 const TABS = [
-  { id: 'overview',  label: 'Overview',  icon: BarChart3 },
+  { id: 'overview',  label: 'Overview',  icon: BarChart3  },
   { id: 'users',     label: 'Users',     icon: Users      },
-  { id: 'requests',  label: 'Requests',  icon: AlertTriangle },
   { id: 'plans',     label: 'Plans',     icon: DollarSign },
   { id: 'codes',     label: 'Codes',     icon: Gift       },
   { id: 'notify',    label: 'Notify',    icon: Bell       },
@@ -547,7 +546,6 @@ const Admin = () => {
         <div style={{ display: 'flex', overflowX: 'auto', borderTop: `1px solid ${BORDER}`, scrollbarWidth: 'none' }}>
           {TABS.map(tab => {
             const active = activeTab === tab.id;
-            const hasBadge = tab.id === 'requests' && requests.length > 0;
             return (
               <button
                 key={tab.id}
@@ -563,11 +561,6 @@ const Admin = () => {
               >
                 <tab.icon style={{ width: 13, height: 13 }} />
                 {tab.label}
-                {hasBadge && (
-                  <span style={{ background: AMBER, color: '#000', borderRadius: 6, fontSize: 10, fontWeight: 800, padding: '1px 5px', minWidth: 18, textAlign: 'center' }}>
-                    {requests.length}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -743,52 +736,6 @@ const Admin = () => {
                 </div>
               </Card>
             ))}
-          </div>
-        )}
-
-        {/* ── REQUESTS TAB ── */}
-        {activeTab === 'requests' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {requests.length === 0 ? (
-              <Card>
-                <div style={{ padding: 48, textAlign: 'center' }}>
-                  <Activity style={{ width: 40, height: 40, color: MUTED, margin: '0 auto 12px', opacity: 0.4 }} />
-                  <div style={{ color: MUTED, fontFamily: 'monospace', fontSize: 13 }}>No pending requests</div>
-                </div>
-              </Card>
-            ) : (
-              requests.map(request => (
-                <Card key={request.id} glow={AMBER}>
-                  <div style={{ padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                          <Crown style={{ width: 14, height: 14, color: AMBER, flexShrink: 0 }} />
-                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#ddddf5', fontSize: 13 }}>
-                            {request.profiles?.username || request.profiles?.email?.split('@')[0]}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11, color: MUTED }}>{request.profiles?.email}</div>
-                        {request.message && (
-                          <div style={{ marginTop: 8, padding: '8px 12px', background: CARD2, borderRadius: 8, fontSize: 12, color: '#cccde8', border: `1px solid ${BORDER}` }}>{request.message}</div>
-                        )}
-                        <div style={{ fontSize: 10, color: `${MUTED}77`, marginTop: 6, fontFamily: 'monospace' }}>
-                          {new Date(request.created_at).toLocaleString()}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                        <button onClick={() => handleRejectRequest(request)} style={{ width: 38, height: 38, borderRadius: 10, background: `${RED}15`, border: `1px solid ${RED}40`, color: RED, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <X style={{ width: 16, height: 16 }} />
-                        </button>
-                        <button onClick={() => handleApproveRequest(request)} style={{ width: 38, height: 38, borderRadius: 10, background: `${GREEN}20`, border: `1px solid ${GREEN}50`, color: GREEN, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Check style={{ width: 16, height: 16 }} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))
-            )}
           </div>
         )}
 

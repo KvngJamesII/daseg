@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Terminal, Trash2, RefreshCw, Loader2, Send } from 'lucide-react';
 import { vmApi } from '@/lib/vmApi';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  Terminal, Trash2, RefreshCw, Loader2, Send, ChevronDown, ChevronUp,
+  Play, MessageSquare, Info,
+} from 'lucide-react';
 
 interface UnifiedConsoleProps {
   panelId: string;
@@ -13,84 +13,77 @@ interface UnifiedConsoleProps {
 
 interface ConsoleLine {
   id: string;
-  type: 'stdout' | 'stderr' | 'input' | 'output' | 'error' | 'info' | 'success' | 'system';
+  type: 'stdout' | 'stderr' | 'input' | 'output' | 'error' | 'info' | 'success' | 'system' | 'stdin';
   content: string;
   timestamp: number;
 }
 
+const CARD   = '#0d0d1a';
+const CARD2  = '#111122';
+const BORDER = '#1a1a2e';
+const GREEN  = '#00e676';
+const CYAN   = '#00b0ff';
+const AMBER  = '#f0b429';
+const RED    = '#ff4d4d';
+const MUTED  = '#5a5a88';
+
+const cleanLine = (line: string): string =>
+  line
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/\\x1b\[[0-9;]*m/g, '')
+    .replace(/\[\d+m/g, '')
+    .replace(/^\d+\|panel-[a-z0-9-]+\s*\|\s*/i, '')
+    .trim();
+
+const isMetadataLine = (line: string): boolean => {
+  const l = line.toLowerCase();
+  return l.includes('[tailing]') || l.includes('.pm2/logs/') ||
+    l.includes('last 200 lines') || l.includes('last 100 lines') || line.trim() === '';
+};
+
+const detectType = (content: string): ConsoleLine['type'] => {
+  const u = content.toUpperCase();
+  if (u.includes('ERROR:') || u.includes('[ERROR]') || u.includes('EXCEPTION') || u.includes('TRACEBACK') || u.includes('SYNTAXERROR') || u.includes('NAMEERROR') || u.includes('TYPEERROR')) return 'error';
+  if (u.includes('WARN:') || u.includes('WARNING:') || u.includes('[WARN]')) return 'info';
+  const http = content.match(/"\s*(GET|POST|PUT|DELETE|PATCH)\s+[^"]+"\s+(\d{3})/);
+  if (http && parseInt(http[2]) >= 400) return 'error';
+  return 'stdout';
+};
+
+const lineColor: Record<string, string> = {
+  input:   GREEN,
+  stdin:   '#a78bfa',
+  stderr:  RED,
+  error:   RED,
+  success: GREEN,
+  info:    AMBER,
+  system:  AMBER,
+  output:  CYAN,
+  stdout:  '#cccccc',
+};
+
+type Mode = 'shell' | 'stdin';
+
 export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
-  const [logLines, setLogLines] = useState<ConsoleLine[]>([]);
-  const [systemLogs, setSystemLogs] = useState<ConsoleLine[]>([]);
-  const [commandLines, setCommandLines] = useState<ConsoleLine[]>([]);
-  const [input, setInput] = useState('');
-  const [executing, setExecuting] = useState(false);
+  const [logLines, setLogLines]       = useState<ConsoleLine[]>([]);
+  const [systemLogs, setSystemLogs]   = useState<ConsoleLine[]>([]);
+  const [cmdLines, setCmdLines]       = useState<ConsoleLine[]>([]);
+  const [input, setInput]             = useState('');
+  const [executing, setExecuting]     = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [mode, setMode]               = useState<Mode>('shell');
+  const [stdinQueue, setStdinQueue]   = useState<string[]>([]);
+  const [showStdinHelper, setShowStdinHelper] = useState(false);
   const consoleRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef   = useRef<HTMLInputElement>(null);
 
-  // Strip ANSI escape codes and clean PM2 output
-  const cleanLogLine = (line: string): string => {
-    // Remove ANSI escape codes (both escaped and raw)
-    let cleaned = line
-      .replace(/\x1b\[[0-9;]*m/g, '')
-      .replace(/\\x1b\[[0-9;]*m/g, '')
-      .replace(/\[\d+m/g, '');
-    // Remove PM2 prefix like "1|panel-39 | " or "2|panel-392b497c... | "
-    cleaned = cleaned.replace(/^\d+\|panel-[a-z0-9-]+\s*\|\s*/i, '');
-    return cleaned.trim();
-  };
-
-  const isMetadataLine = (line: string): boolean => {
-    const lower = line.toLowerCase();
-    return (
-      lower.includes('[tailing]') ||
-      lower.includes('.pm2/logs/') ||
-      lower.includes('last 200 lines') ||
-      lower.includes('last 100 lines') ||
-      line.trim() === ''
-    );
-  };
-
-  // Fetch system logs from Supabase (deployment events, errors, etc.)
-  const fetchSystemLogs = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('panel_logs')
-        .select('*')
-        .eq('panel_id', panelId)
-        .order('created_at', { ascending: true })
-        .limit(50);
-
-      if (error) throw error;
-
-      const logs: ConsoleLine[] = (data || []).map((log) => ({
-        id: `sys-${log.id}`,
-        type: log.log_type === 'error' ? 'error' : log.log_type === 'success' ? 'success' : 'info',
-        content: `[${log.log_type.toUpperCase()}] ${log.message}`,
-        timestamp: new Date(log.created_at).getTime(),
-      }));
-
-      setSystemLogs(logs);
-    } catch (error) {
-      console.error('Failed to fetch system logs:', error);
-    }
-  };
-
-  // Subscribe to real-time system logs
+  /* ── System logs (Supabase) ── */
   useEffect(() => {
     fetchSystemLogs();
-
     const channel = supabase
       .channel(`panel-logs-${panelId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'panel_logs',
-          filter: `panel_id=eq.${panelId}`,
-        },
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'panel_logs', filter: `panel_id=eq.${panelId}` },
         (payload) => {
           const log = payload.new as any;
           setSystemLogs(prev => [...prev, {
@@ -99,312 +92,269 @@ export function UnifiedConsole({ panelId, panelStatus }: UnifiedConsoleProps) {
             content: `[${log.log_type.toUpperCase()}] ${log.message}`,
             timestamp: new Date(log.created_at).getTime(),
           }]);
-        }
-      )
+        })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [panelId]);
 
-  // Detect log type from content (Python/Node often send INFO to stderr)
-  const detectLogType = (content: string): ConsoleLine['type'] => {
-    const upper = content.toUpperCase();
-    // Check for common log level patterns
-    if (upper.includes('ERROR:') || upper.includes('[ERROR]') || upper.includes('EXCEPTION') || upper.includes('TRACEBACK')) {
-      return 'error';
-    }
-    if (upper.includes('WARN:') || upper.includes('WARNING:') || upper.includes('[WARN]') || upper.includes('[WARNING]')) {
-      return 'info'; // Yellow for warnings
-    }
-    if (upper.includes('INFO:') || upper.includes('[INFO]') || upper.includes('DEBUG:') || upper.includes('[DEBUG]')) {
-      return 'stdout'; // Green for info/debug
-    }
-    // HTTP status codes - 2xx/3xx are success, 4xx/5xx are errors
-    const httpMatch = content.match(/"\s*(GET|POST|PUT|DELETE|PATCH)\s+[^"]+"\s+(\d{3})/);
-    if (httpMatch) {
-      const status = parseInt(httpMatch[2]);
-      if (status >= 400) return 'error';
-      return 'stdout'; // Green for successful HTTP
-    }
-    return 'stdout'; // Default to green
+  const fetchSystemLogs = async () => {
+    const { data } = await supabase.from('panel_logs').select('*').eq('panel_id', panelId).order('created_at', { ascending: true }).limit(50);
+    setSystemLogs((data || []).map(log => ({
+      id: `sys-${log.id}`,
+      type: log.log_type === 'error' ? 'error' : log.log_type === 'success' ? 'success' : 'info',
+      content: `[${log.log_type.toUpperCase()}] ${log.message}`,
+      timestamp: new Date(log.created_at).getTime(),
+    })));
   };
 
+  /* ── App logs (PM2) ── */
   const fetchLogs = async () => {
     if (panelStatus !== 'running') return;
-    
     setLoading(true);
     try {
       const result = await vmApi.getLogs(panelId, 100);
       const now = Date.now();
-      
-      const outLines: ConsoleLine[] = result.logs?.out 
-        ? result.logs.out.split('\n')
-            .map(cleanLogLine)
-            .filter(line => line && !isMetadataLine(line))
-            .map((content, i) => ({
-              id: `out-${now}-${i}`,
-              type: detectLogType(content),
-              content,
-              timestamp: now,
-            }))
+      const outLines: ConsoleLine[] = result.logs?.out
+        ? result.logs.out.split('\n').map(cleanLine).filter(l => l && !isMetadataLine(l))
+            .map((content, i) => ({ id: `out-${now}-${i}`, type: detectType(content), content, timestamp: now }))
         : [];
-      
-      const errLines: ConsoleLine[] = result.logs?.err 
-        ? result.logs.err.split('\n')
-            .map(cleanLogLine)
-            .filter(line => line && !isMetadataLine(line))
-            .map((content, i) => ({
-              id: `err-${now}-${i}`,
-              type: detectLogType(content), // Detect actual type, not just stderr
-              content,
-              timestamp: now,
-            }))
+      const errLines: ConsoleLine[] = result.logs?.err
+        ? result.logs.err.split('\n').map(cleanLine).filter(l => l && !isMetadataLine(l))
+            .map((content, i) => ({ id: `err-${now}-${i}`, type: detectType(content), content, timestamp: now }))
         : [];
-      
-      // Replace log lines entirely (PM2 gives us latest logs each time)
       setLogLines([...outLines, ...errLines]);
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
-    }
+    } catch { /* keep existing */ }
     setLoading(false);
   };
 
   useEffect(() => {
-    if (panelStatus === 'running') {
-      fetchLogs();
-    } else {
-      setLogLines([{
-        id: 'welcome',
-        type: 'stdout',
-        content: 'iDev Host Console v1.0.0 - Panel is not running',
-        timestamp: Date.now(),
-      }]);
-      setCommandLines([]);
+    if (panelStatus === 'running') fetchLogs();
+    else {
+      setLogLines([{ id: 'welcome', type: 'info', content: 'Panel is not running. Start the panel to see output.', timestamp: Date.now() }]);
+      setCmdLines([]);
     }
   }, [panelId, panelStatus]);
 
   useEffect(() => {
     if (!autoRefresh || panelStatus !== 'running') return;
-    
     const interval = setInterval(fetchLogs, 3000);
     return () => clearInterval(interval);
   }, [autoRefresh, panelStatus, panelId]);
 
   useEffect(() => {
     consoleRef.current?.scrollTo(0, consoleRef.current.scrollHeight);
-  }, [logLines, commandLines]);
+  }, [logLines, cmdLines, systemLogs]);
 
-  const handleCommand = async (command: string) => {
-    const trimmed = command.trim();
+  /* ── Command/stdin handler ── */
+  const handleSend = async (value: string) => {
+    const trimmed = value.trim();
     if (!trimmed) return;
-
-    const inputLine: ConsoleLine = {
-      id: `cmd-${Date.now()}`,
-      type: 'input',
-      content: `$ ${trimmed}`,
-      timestamp: Date.now(),
-    };
-    setCommandLines(prev => [...prev, inputLine]);
     setInput('');
 
-    // Handle local commands
-    if (trimmed === 'clear') {
-      setLogLines([]);
-      setCommandLines([]);
-      return;
-    }
+    if (mode === 'shell') {
+      /* ── Shell mode: run command ── */
+      const inputLine: ConsoleLine = { id: `cmd-${Date.now()}`, type: 'input', content: `$ ${trimmed}`, timestamp: Date.now() };
+      setCmdLines(prev => [...prev, inputLine]);
 
-    if (trimmed === 'help') {
-      setCommandLines(prev => [...prev, {
-        id: `help-${Date.now()}`,
-        type: 'output',
-        content: `Commands:
-  help    - Show this help
-  clear   - Clear console
-  Any command will execute on the server`,
-        timestamp: Date.now(),
-      }]);
-      return;
-    }
+      if (trimmed === 'clear') { setLogLines([]); setCmdLines([]); return; }
+      if (trimmed === 'help') {
+        setCmdLines(prev => [...prev, { id: `help-${Date.now()}`, type: 'output', content: 'Commands: clear, help, or any shell command (ls, cat, pip install...)', timestamp: Date.now() }]);
+        return;
+      }
 
+      setExecuting(true);
+      try {
+        const result = await vmApi.exec(panelId, trimmed);
+        const combined = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+        if (combined) {
+          setCmdLines(prev => [...prev, { id: `res-${Date.now()}`, type: result.stderr && !result.stdout ? 'error' : 'output', content: combined, timestamp: Date.now() }]);
+        } else {
+          setCmdLines(prev => [...prev, { id: `empty-${Date.now()}`, type: 'output', content: '(no output)', timestamp: Date.now() }]);
+        }
+      } catch (e: any) {
+        setCmdLines(prev => [...prev, { id: `err-${Date.now()}`, type: 'error', content: `Error: ${e.message}`, timestamp: Date.now() }]);
+      }
+      setExecuting(false);
+
+    } else {
+      /* ── Stdin mode: queue the input for use with shell command ── */
+      const newQueue = [...stdinQueue, trimmed];
+      setStdinQueue(newQueue);
+      setCmdLines(prev => [...prev, { id: `stdin-${Date.now()}`, type: 'stdin', content: `> queued: "${trimmed}"`, timestamp: Date.now() }]);
+    }
+  };
+
+  /* ── Run with stdin queue ── */
+  const runWithInputs = async () => {
+    if (stdinQueue.length === 0) return;
     setExecuting(true);
     try {
-      const result = await vmApi.exec(panelId, trimmed);
-      
-      if (result.stdout) {
-        setCommandLines(prev => [...prev, {
-          id: `stdout-${Date.now()}`,
-          type: 'output',
-          content: result.stdout,
-          timestamp: Date.now(),
-        }]);
-      }
-      
-      if (result.stderr) {
-        setCommandLines(prev => [...prev, {
-          id: `stderr-${Date.now()}`,
-          type: 'error',
-          content: result.stderr,
-          timestamp: Date.now(),
-        }]);
-      }
-      
-      if (!result.stdout && !result.stderr) {
-        setCommandLines(prev => [...prev, {
-          id: `empty-${Date.now()}`,
-          type: 'output',
-          content: '(no output)',
-          timestamp: Date.now(),
-        }]);
-      }
-    } catch (error: any) {
-      setCommandLines(prev => [...prev, {
-        id: `error-${Date.now()}`,
-        type: 'error',
-        content: `Error: ${error.message}`,
+      const pipedInput = stdinQueue.map(l => l.replace(/'/g, "'\\''")).join('\\n');
+      const result = await vmApi.exec(panelId, `printf '${pipedInput}\\n'`);
+      setCmdLines(prev => [...prev, {
+        id: `run-${Date.now()}`, type: 'output',
+        content: `[Stdin queue sent: ${stdinQueue.length} input(s)]`,
         timestamp: Date.now(),
       }]);
+      if (result.stdout) {
+        setCmdLines(prev => [...prev, { id: `stdout-${Date.now()}`, type: 'stdout', content: result.stdout, timestamp: Date.now() }]);
+      }
+    } catch (e: any) {
+      setCmdLines(prev => [...prev, { id: `err-${Date.now()}`, type: 'error', content: e.message, timestamp: Date.now() }]);
     }
     setExecuting(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !executing) {
-      handleCommand(input);
-    }
-  };
-
   const clearConsole = async () => {
-    try {
-      await vmApi.clearLogs(panelId);
-      // Also clear system logs from DB
-      await supabase.from('panel_logs').delete().eq('panel_id', panelId);
-      setLogLines([]);
-      setSystemLogs([]);
-      setCommandLines([]);
-    } catch (error) {
-      console.error('Failed to clear logs:', error);
-      setLogLines([]);
-      setSystemLogs([]);
-      setCommandLines([]);
-    }
+    try { await vmApi.clearLogs(panelId); await supabase.from('panel_logs').delete().eq('panel_id', panelId); } catch { }
+    setLogLines([]); setSystemLogs([]); setCmdLines([]); setStdinQueue([]);
   };
 
-  const getLineColor = (type: ConsoleLine['type']) => {
-    switch (type) {
-      case 'input':
-        return 'text-primary font-bold';
-      case 'stderr':
-      case 'error':
-        return 'text-destructive';
-      case 'success':
-        return 'text-success';
-      case 'info':
-      case 'system':
-        return 'text-yellow-400';
-      case 'output':
-        return 'text-blue-400';
-      case 'stdout':
-      default:
-        return 'text-green-400';
-    }
-  };
-
-  // Combine system logs, PM2 logs, and commands - sorted by timestamp
-  const allLines = [...systemLogs, ...logLines, ...commandLines].sort((a, b) => a.timestamp - b.timestamp);
+  const allLines = [...systemLogs, ...logLines, ...cmdLines].sort((a, b) => a.timestamp - b.timestamp);
 
   return (
-    <div className="h-[calc(100vh-280px)] flex flex-col bg-black/95">
+    <div style={{ height: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', background: '#08080f' }}>
+
       {/* Toolbar */}
-      <div className="flex-shrink-0 p-2 sm:p-3 border-b border-border/50 flex items-center justify-between bg-card/50">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Terminal className="w-4 h-4 text-primary" />
-          <span className="text-xs sm:text-sm font-medium">Console</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${BORDER}`, background: CARD, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Terminal style={{ width: 15, height: 15, color: GREEN }} />
+          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#ddddf5' }}>Console</span>
           {panelStatus === 'running' && (
-            <Badge variant="outline" className="text-xs">
-              {autoRefresh ? 'Live' : 'Paused'}
-            </Badge>
+            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 5, background: autoRefresh ? `${GREEN}18` : `${MUTED}18`, color: autoRefresh ? GREEN : MUTED, fontFamily: 'monospace', fontWeight: 700 }}>
+              {autoRefresh ? '● LIVE' : '⏸ PAUSED'}
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`text-xs px-2 ${autoRefresh ? 'text-success' : 'text-muted-foreground'}`}
+            style={{ padding: '4px 10px', borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: autoRefresh ? GREEN : MUTED, fontSize: 11, cursor: 'pointer', fontFamily: 'monospace' }}
           >
-            <span className="hidden sm:inline">{autoRefresh ? 'Pause' : 'Resume'}</span>
-            <span className="sm:hidden">{autoRefresh ? '⏸' : '▶'}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchLogs}
-            disabled={loading || panelStatus !== 'running'}
-            className="px-2"
+            {autoRefresh ? 'Pause' : 'Resume'}
+          </button>
+          <button
+            onClick={fetchLogs} disabled={loading || panelStatus !== 'running'}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+            <RefreshCw style={{ width: 13, height: 13, animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          </button>
+          <button
             onClick={clearConsole}
-            className="px-2"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}
           >
-            <Trash2 className="w-4 h-4" />
-          </Button>
+            <Trash2 style={{ width: 13, height: 13 }} />
+          </button>
         </div>
       </div>
 
-      {/* Console Output */}
+      {/* Log output */}
       <div
         ref={consoleRef}
-        className="flex-1 overflow-y-auto p-3 sm:p-4 font-mono text-xs sm:text-sm min-h-0"
+        style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', fontFamily: '"Fira Code", "JetBrains Mono", monospace', fontSize: 12, lineHeight: 1.7, minHeight: 0 }}
         onClick={() => inputRef.current?.focus()}
       >
         {allLines.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Terminal className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Console ready</p>
-            <p className="text-xs mt-1">App output and command results appear here</p>
+          <div style={{ textAlign: 'center', padding: '48px 16px', color: MUTED }}>
+            <Terminal style={{ width: 36, height: 36, margin: '0 auto 12px', opacity: 0.25 }} />
+            <div style={{ fontSize: 13 }}>Console ready</div>
+            <div style={{ fontSize: 11, marginTop: 6, opacity: 0.6 }}>App output appears here</div>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {allLines.map((line) => (
-              <div
-                key={line.id}
-                className={`py-0.5 whitespace-pre-wrap break-all ${getLineColor(line.type)}`}
-              >
-                {line.content}
-              </div>
-            ))}
-          </div>
+          allLines.map(line => (
+            <div key={line.id} style={{ padding: '1px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: lineColor[line.type] || '#cccccc' }}>
+              {line.content}
+            </div>
+          ))
         )}
       </div>
 
-      {/* Command Input */}
-      <div className="flex-shrink-0 p-2 sm:p-3 border-t border-border/50 bg-card/50">
-        <div className="flex items-center gap-2">
-          <span className="text-primary font-mono text-sm">$</span>
-          <Input
+      {/* Mode tabs + input */}
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${BORDER}`, background: CARD }}>
+
+        {/* Mode selector */}
+        <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BORDER}`, padding: '0 12px' }}>
+          {[
+            { id: 'shell' as Mode, label: 'Shell', icon: Terminal, color: GREEN },
+            { id: 'stdin' as Mode, label: 'App Input', icon: MessageSquare, color: '#a78bfa' },
+          ].map(({ id, label, icon: Icon, color }) => (
+            <button
+              key={id}
+              onClick={() => setMode(id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderBottom: mode === id ? `2px solid ${color}` : '2px solid transparent', background: 'transparent', color: mode === id ? color : MUTED, fontSize: 11, fontFamily: 'monospace', fontWeight: mode === id ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s' }}
+            >
+              <Icon style={{ width: 12, height: 12 }} />
+              {label}
+            </button>
+          ))}
+          {mode === 'stdin' && (
+            <button
+              onClick={() => setShowStdinHelper(!showStdinHelper)}
+              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', border: 'none', background: 'transparent', color: MUTED, fontSize: 10, cursor: 'pointer', fontFamily: 'monospace' }}
+            >
+              <Info style={{ width: 11, height: 11 }} />
+              How it works
+              {showStdinHelper ? <ChevronUp style={{ width: 10, height: 10 }} /> : <ChevronDown style={{ width: 10, height: 10 }} />}
+            </button>
+          )}
+        </div>
+
+        {/* Stdin helper info */}
+        {mode === 'stdin' && showStdinHelper && (
+          <div style={{ padding: '10px 14px', background: '#1a0a2e', borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 11, color: '#a78bfa', fontFamily: 'monospace', marginBottom: 6, fontWeight: 700 }}>App Input Mode</div>
+            <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+              Queue inputs your script needs. Then switch to Shell mode and pipe them when running your script.
+              <br /><br />
+              <span style={{ color: '#cccccc' }}>Example:</span> If your script asks "Enter name:" then "Enter age:", queue "John" and "25" here. Then in Shell mode run:<br />
+              <span style={{ color: GREEN, fontFamily: 'monospace', display: 'block', marginTop: 4, padding: '4px 8px', background: '#00001a', borderRadius: 5 }}>
+                $ printf 'John\n25\n' | python main.py
+              </span>
+              <br />
+              Or copy the queue inputs and run your script interactively via Shell.
+            </div>
+          </div>
+        )}
+
+        {/* Stdin queue display */}
+        {mode === 'stdin' && stdinQueue.length > 0 && (
+          <div style={{ padding: '6px 14px', background: '#0f0a1a', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto' }}>
+            <span style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', flexShrink: 0 }}>Queue:</span>
+            {stdinQueue.map((item, i) => (
+              <span key={i} style={{ fontSize: 10, background: '#a78bfa15', color: '#a78bfa', borderRadius: 5, padding: '2px 7px', fontFamily: 'monospace', border: '1px solid #a78bfa30', flexShrink: 0 }}>
+                {i + 1}. {item}
+              </span>
+            ))}
+            <button
+              onClick={() => setStdinQueue([])}
+              style={{ marginLeft: 'auto', fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, fontFamily: 'monospace' }}
+            >
+              clear
+            </button>
+          </div>
+        )}
+
+        {/* Input row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 14, color: mode === 'shell' ? GREEN : '#a78bfa', flexShrink: 0, fontWeight: 700 }}>
+            {mode === 'shell' ? '$' : '>'}
+          </span>
+          <input
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Enter command..."
-            className="flex-1 font-mono text-xs sm:text-sm border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-8"
-          />
-          <Button 
-            size="icon" 
-            variant="ghost" 
-            onClick={() => handleCommand(input)} 
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !executing) handleSend(input); }}
+            placeholder={mode === 'shell' ? 'Enter command...' : 'Type input for your app...'}
             disabled={executing}
-            className="h-8 w-8"
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontFamily: '"Fira Code", monospace', fontSize: 13, color: mode === 'shell' ? GREEN : '#a78bfa', padding: 0 }}
+          />
+          <button
+            onClick={() => handleSend(input)}
+            disabled={executing || !input.trim()}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, background: mode === 'shell' ? (input.trim() ? `${GREEN}20` : 'transparent') : (input.trim() ? '#a78bfa20' : 'transparent'), border: `1px solid ${input.trim() ? (mode === 'shell' ? `${GREEN}40` : '#a78bfa40') : BORDER}`, color: mode === 'shell' ? GREEN : '#a78bfa', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}
           >
-            {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+            {executing ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Send style={{ width: 13, height: 13 }} />}
+          </button>
         </div>
       </div>
     </div>

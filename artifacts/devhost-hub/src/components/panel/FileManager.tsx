@@ -1,38 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { vmApi, FileEntry } from '@/lib/vmApi';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import {
-  Folder,
-  File,
-  Upload,
-  MoreVertical,
-  Trash2,
-  Edit,
-  FileCode,
-  Loader2,
-  FolderPlus,
-  FilePlus,
-  Save,
-  RefreshCw,
-  Download,
-  Archive,
-  CheckSquare,
+  Folder, Upload, MoreVertical, Trash2, FileCode, Loader2,
+  FolderPlus, FilePlus, RefreshCw, Download, ChevronRight,
+  ChevronLeft, Save, X, ArrowLeft, Check, AlertCircle,
 } from 'lucide-react';
 
 interface PanelFile {
@@ -40,418 +12,262 @@ interface PanelFile {
   path: string;
   type: 'file' | 'directory';
   size: number | null;
-  content?: string;
 }
 
 interface FileManagerProps {
   panelId: string;
 }
 
+/* ── File type icon / color mapping ─────────────────────────── */
+const EXT_META: Record<string, { label: string; color: string; bg: string }> = {
+  py:   { label: 'PY',   color: '#4584b6', bg: '#4584b618' },
+  js:   { label: 'JS',   color: '#f7df1e', bg: '#f7df1e15' },
+  ts:   { label: 'TS',   color: '#3178c6', bg: '#3178c618' },
+  jsx:  { label: 'JSX',  color: '#61dafb', bg: '#61dafb15' },
+  tsx:  { label: 'TSX',  color: '#61dafb', bg: '#61dafb15' },
+  json: { label: 'JSON', color: '#ab9df2', bg: '#ab9df218' },
+  html: { label: 'HTML', color: '#e34c26', bg: '#e34c2615' },
+  css:  { label: 'CSS',  color: '#264de4', bg: '#264de415' },
+  scss: { label: 'SCSS', color: '#cc6699', bg: '#cc669915' },
+  md:   { label: 'MD',   color: '#a0aec0', bg: '#a0aec018' },
+  sh:   { label: 'SH',   color: '#00e676', bg: '#00e67615' },
+  env:  { label: 'ENV',  color: '#f0b429', bg: '#f0b42918' },
+  yml:  { label: 'YML',  color: '#ff6b6b', bg: '#ff6b6b15' },
+  yaml: { label: 'YAML', color: '#ff6b6b', bg: '#ff6b6b15' },
+  txt:  { label: 'TXT',  color: '#718096', bg: '#71809618' },
+  sql:  { label: 'SQL',  color: '#00b0ff', bg: '#00b0ff15' },
+  toml: { label: 'TOML', color: '#9c9c9c', bg: '#9c9c9c15' },
+  lock: { label: 'LOCK', color: '#f0b429', bg: '#f0b42918' },
+};
+
+function FileTypeIcon({ name, size = 32 }: { name: string; size?: number }) {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  const meta = EXT_META[ext];
+  const fontSize = size <= 24 ? 8 : size <= 32 ? 9 : 10;
+  if (!meta) return (
+    <div style={{ width: size, height: size, borderRadius: 6, background: '#1a1a2e', border: '1px solid #2a2a4a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <FileCode style={{ width: size * 0.5, height: size * 0.5, color: '#5a5a88' }} />
+    </div>
+  );
+  return (
+    <div style={{ width: size, height: size, borderRadius: 6, background: meta.bg, border: `1px solid ${meta.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize, fontWeight: 900, fontFamily: 'monospace', color: meta.color, letterSpacing: -0.5 }}>{meta.label}</span>
+    </div>
+  );
+}
+
+function FolderIcon({ size = 32 }: { size?: number }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: 6, background: '#f0b42918', border: '1px solid #f0b42930', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Folder style={{ width: size * 0.55, height: size * 0.55, color: '#f0b429' }} />
+    </div>
+  );
+}
+
+/* ── Code editor syntax hints ───────────────────────────────── */
+function getLanguageHint(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const map: Record<string, string> = {
+    py: 'Python', js: 'JavaScript', ts: 'TypeScript', jsx: 'JSX',
+    tsx: 'TSX', json: 'JSON', html: 'HTML', css: 'CSS', scss: 'SCSS',
+    md: 'Markdown', sh: 'Shell', yml: 'YAML', yaml: 'YAML', sql: 'SQL',
+    env: 'Env', toml: 'TOML', txt: 'Plain Text',
+  };
+  return map[ext] || 'Text';
+}
+
+const CARD = '#0d0d1a';
+const CARD2 = '#111122';
+const BORDER = '#1a1a2e';
+const GREEN = '#00e676';
+const MUTED = '#5a5a88';
+
 export function FileManager({ panelId }: FileManagerProps) {
   const [files, setFiles] = useState<PanelFile[]>([]);
   const [currentPath, setCurrentPath] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showRenameDialog, setShowRenameDialog] = useState(false);
-  const [createType, setCreateType] = useState<'file' | 'folder'>('file');
-  const [newName, setNewName] = useState('');
-  const [renamingFile, setRenamingFile] = useState<PanelFile | null>(null);
-  const [renameValue, setRenameValue] = useState('');
   const [editingFile, setEditingFile] = useState<PanelFile | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [originalContent, setOriginalContent] = useState('');
   const [saving, setSaving] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [hasDraft, setHasDraft] = useState(false);
-  const [loadingFileId, setLoadingFileId] = useState<string | null>(null);
+  const [loadingFile, setLoadingFile] = useState<string | null>(null);
+  const [showCreateInput, setShowCreateInput] = useState<'file' | 'folder' | null>(null);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState<PanelFile | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [lineCount, setLineCount] = useState(1);
+  const [colPos, setColPos] = useState(1);
+  const [isDirty, setIsDirty] = useState(false);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  // Draft storage key generator
-  const getDraftKey = (filePath: string) => `draft_${panelId}_${filePath}`;
+  const draftKey = (path: string) => `draft_${panelId}_${path}`;
 
-  // Auto-save draft to localStorage
-  useEffect(() => {
-    if (editingFile && editContent) {
-      const draftKey = getDraftKey(editingFile.path);
-      const timeoutId = setTimeout(() => {
-        localStorage.setItem(draftKey, editContent);
-        localStorage.setItem(`${draftKey}_timestamp`, Date.now().toString());
-      }, 500); // Debounce 500ms
-      return () => clearTimeout(timeoutId);
-    }
-  }, [editContent, editingFile, panelId]);
-
-  // Clear draft after successful save
-  const clearDraft = (filePath: string) => {
-    const draftKey = getDraftKey(filePath);
-    localStorage.removeItem(draftKey);
-    localStorage.removeItem(`${draftKey}_timestamp`);
-    setHasDraft(false);
-  };
-
-  // Check for existing draft
-  const checkForDraft = (filePath: string): string | null => {
-    const draftKey = getDraftKey(filePath);
-    return localStorage.getItem(draftKey);
-  };
-
-  useEffect(() => {
-    fetchFiles();
-  }, [panelId, currentPath]);
-
-  // Clear selection when changing directory
-  useEffect(() => {
-    setSelectedFiles(new Set());
-  }, [currentPath]);
+  useEffect(() => { fetchFiles(); }, [panelId, currentPath]);
 
   const fetchFiles = async () => {
     setLoading(true);
     try {
       const result = await vmApi.listFiles(panelId, currentPath);
-      const mappedFiles: PanelFile[] = result.files.map((f: FileEntry) => ({
-        name: f.name,
-        path: f.path,
-        type: f.type,
-        size: f.size,
+      const mapped: PanelFile[] = result.files.map((f: FileEntry) => ({
+        name: f.name, path: f.path, type: f.type, size: f.size,
       }));
-      // Sort: directories first, then by name
-      mappedFiles.sort((a, b) => {
+      mapped.sort((a, b) => {
         if (a.type === 'directory' && b.type !== 'directory') return -1;
         if (a.type !== 'directory' && b.type === 'directory') return 1;
         return a.name.localeCompare(b.name);
       });
-      setFiles(mappedFiles);
-    } catch (error: any) {
-      console.error('Failed to load files:', error);
-      setFiles([]);
-    }
+      setFiles(mapped);
+    } catch { setFiles([]); }
     setLoading(false);
   };
 
-  const toggleSelect = (path: string) => {
-    setSelectedFiles(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(path)) {
-        newSet.delete(path);
-      } else {
-        newSet.add(path);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedFiles.size === files.length) {
-      setSelectedFiles(new Set());
-    } else {
-      setSelectedFiles(new Set(files.map(f => f.path)));
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedFiles.size === 0) return;
-    setBulkLoading(true);
-    
+  const openFile = async (file: PanelFile) => {
+    setLoadingFile(file.path);
     try {
-      await Promise.all(
-        Array.from(selectedFiles).map(path => vmApi.deleteFile(panelId, path))
-      );
-      toast({
-        title: 'Deleted',
-        description: `${selectedFiles.size} item(s) deleted`,
-      });
-      setSelectedFiles(new Set());
-      fetchFiles();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to delete some files',
-        variant: 'destructive',
-      });
+      const result = await vmApi.getFileContent(panelId, file.path);
+      const savedDraft = localStorage.getItem(draftKey(file.path));
+      const content = (savedDraft && savedDraft !== result.content) ? savedDraft : result.content;
+      setEditContent(content);
+      setOriginalContent(result.content);
+      setIsDirty(savedDraft !== null && savedDraft !== result.content);
+      setEditingFile(file);
+      setLineCount(content.split('\n').length);
+      setColPos(1);
+      if (savedDraft && savedDraft !== result.content) {
+        toast({ title: 'Draft Restored', description: 'Unsaved changes loaded' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to load file', variant: 'destructive' });
     }
-    setBulkLoading(false);
+    setLoadingFile(null);
   };
 
-  const handleBulkDownload = async () => {
-    if (selectedFiles.size === 0) return;
-    setBulkLoading(true);
-
-    try {
-      const filesToDownload = files.filter(f => selectedFiles.has(f.path) && f.type === 'file');
-      
-      for (const file of filesToDownload) {
-        const result = await vmApi.getFileContent(panelId, file.path);
-        const blob = new Blob([result.content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-      
-      toast({
-        title: 'Downloaded',
-        description: `${filesToDownload.length} file(s) downloaded`,
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to download files',
-        variant: 'destructive',
-      });
-    }
-    setBulkLoading(false);
+  const handleEditorChange = (val: string) => {
+    setEditContent(val);
+    setIsDirty(val !== originalContent);
+    setLineCount(val.split('\n').length);
+    localStorage.setItem(draftKey(editingFile!.path), val);
   };
 
-  const handleBulkArchive = async () => {
-    if (selectedFiles.size === 0) return;
-    setBulkLoading(true);
+  const handleCursorChange = (e: React.MouseEvent<HTMLTextAreaElement> | React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = e.target as HTMLTextAreaElement;
+    const text = ta.value.substring(0, ta.selectionStart);
+    const lines = text.split('\n');
+    setLineCount(editContent.split('\n').length);
+    setColPos(lines[lines.length - 1].length + 1);
+  };
 
-    try {
-      const archivePath = currentPath ? `${currentPath}/archive` : 'archive';
-      await vmApi.createDirectory(panelId, archivePath);
-      
-      const filesToArchive = files.filter(f => selectedFiles.has(f.path));
-      
-      for (const file of filesToArchive) {
-        if (file.type === 'file') {
-          const result = await vmApi.getFileContent(panelId, file.path);
-          await vmApi.syncFiles(panelId, [{ path: `${archivePath}/${file.name}`, content: result.content }]);
-          await vmApi.deleteFile(panelId, file.path);
-        }
-      }
-      
-      toast({
-        title: 'Archived',
-        description: `${filesToArchive.length} item(s) moved to archive folder`,
-      });
-      setSelectedFiles(new Set());
-      fetchFiles();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to archive files',
-        variant: 'destructive',
-      });
+  const handleTabKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const ta = editorRef.current!;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const newVal = editContent.substring(0, start) + '  ' + editContent.substring(end);
+      setEditContent(newVal);
+      setIsDirty(newVal !== originalContent);
+      localStorage.setItem(draftKey(editingFile!.path), newVal);
+      setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + 2; }, 0);
     }
-    setBulkLoading(false);
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      saveFile();
+    }
+  };
+
+  const saveFile = async () => {
+    if (!editingFile || saving) return;
+    setSaving(true);
+    try {
+      await vmApi.syncFiles(panelId, [{ path: editingFile.path, content: editContent }]);
+      setOriginalContent(editContent);
+      setIsDirty(false);
+      localStorage.removeItem(draftKey(editingFile.path));
+      toast({ title: 'Saved', description: editingFile.name });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to save', variant: 'destructive' });
+    }
+    setSaving(false);
+  };
+
+  const closeEditor = () => {
+    if (isDirty) {
+      if (!window.confirm('You have unsaved changes. Close anyway?')) return;
+    }
+    setEditingFile(null);
+    setEditContent('');
+    setIsDirty(false);
   };
 
   const handleCreate = async () => {
-    if (!newName.trim()) return;
-    setSaving(true);
-
+    if (!newName.trim() || !showCreateInput) return;
+    setCreating(true);
     try {
       const filePath = currentPath ? `${currentPath}/${newName.trim()}` : newName.trim();
-      
-      if (createType === 'folder') {
+      if (showCreateInput === 'folder') {
         await vmApi.createDirectory(panelId, filePath);
       } else {
         await vmApi.syncFiles(panelId, [{ path: filePath, content: '' }]);
       }
-      
-      toast({
-        title: 'Created',
-        description: `${createType === 'folder' ? 'Folder' : 'File'} created successfully`,
-      });
+      toast({ title: 'Created', description: newName.trim() });
       setNewName('');
-      setShowCreateDialog(false);
+      setShowCreateInput(null);
       fetchFiles();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to create ' + createType,
-        variant: 'destructive',
-      });
+      if (showCreateInput === 'file') {
+        openFile({ name: newName.trim(), path: filePath, type: 'file', size: 0 });
+      }
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
     }
-    setSaving(false);
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const uploadedFiles = e.target.files;
-    if (!uploadedFiles) return;
-
-    try {
-      const filesToSync = await Promise.all(
-        Array.from(uploadedFiles).map(async (file) => {
-          const content = await file.text();
-          const filePath = currentPath ? `${currentPath}/${file.name}` : file.name;
-          return { path: filePath, content };
-        })
-      );
-
-      await vmApi.syncFiles(panelId, filesToSync);
-
-      toast({
-        title: 'Uploaded',
-        description: `${uploadedFiles.length} file(s) uploaded`,
-      });
-      fetchFiles();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to upload files',
-        variant: 'destructive',
-      });
-    }
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    setCreating(false);
   };
 
   const handleDelete = async (file: PanelFile) => {
+    if (!window.confirm(`Delete "${file.name}"?`)) return;
     try {
       await vmApi.deleteFile(panelId, file.path);
-      toast({
-        title: 'Deleted',
-        description: `${file.name} deleted`,
-      });
+      toast({ title: 'Deleted', description: file.name });
       fetchFiles();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to delete',
-        variant: 'destructive',
-      });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
     }
-  };
-
-  const handleEdit = async (file: PanelFile) => {
-    setLoadingFileId(file.path);
-    setEditingFile(file);
-    setEditContent('');
-    setHasDraft(false);
-    
-    try {
-      const result = await vmApi.getFileContent(panelId, file.path);
-      const savedDraft = checkForDraft(file.path);
-      
-      if (savedDraft && savedDraft !== result.content) {
-        // There's a draft that differs from the server content
-        setHasDraft(true);
-        setEditContent(savedDraft);
-        toast({
-          title: 'Draft Restored',
-          description: 'Your unsaved changes have been restored from draft',
-        });
-      } else {
-        setEditContent(result.content);
-        // Clear draft if it matches server content
-        if (savedDraft) clearDraft(file.path);
-      }
-      setShowEditDialog(true);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to load file content',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoadingFileId(null);
-    }
-  };
-
-  const handleDiscardDraft = async () => {
-    if (!editingFile) return;
-    clearDraft(editingFile.path);
-    
-    try {
-      const result = await vmApi.getFileContent(panelId, editingFile.path);
-      setEditContent(result.content);
-      toast({
-        title: 'Draft Discarded',
-        description: 'Original content restored',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: 'Failed to reload original content',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleSave = async () => {
-    if (!editingFile) return;
-    setSaving(true);
-
-    try {
-      await vmApi.syncFiles(panelId, [{ path: editingFile.path, content: editContent }]);
-      clearDraft(editingFile.path);
-      toast({
-        title: 'Saved',
-        description: 'File saved successfully',
-      });
-      setShowEditDialog(false);
-      setEditingFile(null);
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to save file',
-        variant: 'destructive',
-      });
-    }
-    setSaving(false);
-  };
-
-  const handleRename = (file: PanelFile) => {
-    setRenamingFile(file);
-    setRenameValue(file.name);
-    setShowRenameDialog(true);
   };
 
   const handleRenameSubmit = async () => {
-    if (!renamingFile || !renameValue.trim()) return;
-    setSaving(true);
-
+    if (!renaming || !renameValue.trim()) return;
     try {
-      const oldPath = renamingFile.path;
-      const pathParts = oldPath.split('/');
-      pathParts.pop();
-      const newPath = pathParts.length > 0 
-        ? `${pathParts.join('/')}/${renameValue.trim()}`
-        : renameValue.trim();
-
-      if (renamingFile.type === 'file') {
-        // For files: get content, create new, delete old
-        const result = await vmApi.getFileContent(panelId, oldPath);
-        await vmApi.syncFiles(panelId, [{ path: newPath, content: result.content }]);
-        await vmApi.deleteFile(panelId, oldPath);
-      } else {
-        // For directories: create new, can't easily move contents via current API
-        // Just create new directory (user will need to move files manually)
-        await vmApi.createDirectory(panelId, newPath);
-        toast({
-          title: 'Note',
-          description: 'New folder created. Please move files manually and delete old folder.',
-        });
-      }
-
-      toast({
-        title: 'Renamed',
-        description: `Renamed to ${renameValue.trim()}`,
-      });
-      setShowRenameDialog(false);
-      setRenamingFile(null);
+      const parts = renaming.path.split('/');
+      parts.pop();
+      const newPath = parts.length > 0 ? `${parts.join('/')}/${renameValue.trim()}` : renameValue.trim();
+      const result = await vmApi.getFileContent(panelId, renaming.path);
+      await vmApi.syncFiles(panelId, [{ path: newPath, content: result.content }]);
+      await vmApi.deleteFile(panelId, renaming.path);
+      toast({ title: 'Renamed', description: renameValue.trim() });
+      setRenaming(null);
       fetchFiles();
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to rename',
-        variant: 'destructive',
-      });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
     }
-    setSaving(false);
   };
 
-  const navigateToFolder = (folder: PanelFile) => {
-    setCurrentPath(folder.path);
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploaded = e.target.files;
+    if (!uploaded) return;
+    try {
+      const toSync = await Promise.all(Array.from(uploaded).map(async (file) => {
+        const content = await file.text();
+        return { path: currentPath ? `${currentPath}/${file.name}` : file.name, content };
+      }));
+      await vmApi.syncFiles(panelId, toSync);
+      toast({ title: 'Uploaded', description: `${uploaded.length} file(s)` });
+      fetchFiles();
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const navigateUp = () => {
@@ -460,296 +276,289 @@ export function FileManager({ panelId }: FileManagerProps) {
     setCurrentPath(parts.join('/'));
   };
 
-  const getFileIcon = (file: PanelFile) => {
-    if (file.type === 'directory') {
-      return <Folder className="w-5 h-5 text-warning" />;
-    }
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (['js', 'ts', 'jsx', 'tsx', 'py', 'json'].includes(ext || '')) {
-      return <FileCode className="w-5 h-5 text-primary" />;
-    }
-    return <File className="w-5 h-5 text-muted-foreground" />;
-  };
+  const breadcrumbs = currentPath ? currentPath.split('/').filter(Boolean) : [];
 
-  const isAllSelected = files.length > 0 && selectedFiles.size === files.length;
-  const hasSelection = selectedFiles.size > 0;
+  /* ──────────────────── CODE EDITOR VIEW ──────────────────── */
+  if (editingFile) {
+    const ext = editingFile.name.split('.').pop()?.toLowerCase() || '';
+    const meta = EXT_META[ext];
+    const lang = getLanguageHint(editingFile.name);
+    const lines = editContent.split('\n');
 
-  return (
-    <div className="h-[calc(100vh-280px)] flex flex-col">
-      {/* Toolbar */}
-      <div className="flex-shrink-0 p-2 sm:p-3 border-b border-border flex items-center justify-between gap-1 sm:gap-2">
-        <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto min-w-0">
-          <Button variant="ghost" size="sm" onClick={navigateUp} disabled={!currentPath} className="px-2">
-            ..
-          </Button>
-          <span className="text-xs sm:text-sm text-muted-foreground font-mono truncate max-w-[120px] sm:max-w-none">
-            /{currentPath || ''}
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 280px)', background: '#090910' }}>
+        {/* Editor Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${BORDER}`, background: CARD, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={closeEditor}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}
+            >
+              <ArrowLeft style={{ width: 14, height: 14 }} />
+            </button>
+            <FileTypeIcon name={editingFile.name} size={28} />
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#ddddf5' }}>{editingFile.name}</span>
+                {isDirty && <span style={{ width: 7, height: 7, borderRadius: '50%', background: GREEN, display: 'inline-block' }} title="Unsaved changes" />}
+              </div>
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>
+                {editingFile.path}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: meta?.color || MUTED, background: meta?.bg || '#1a1a2e', borderRadius: 5, padding: '2px 7px', fontFamily: 'monospace', fontWeight: 700 }}>
+              {lang}
+            </span>
+            {isDirty && (
+              <button
+                onClick={() => { setEditContent(originalContent); setIsDirty(false); localStorage.removeItem(draftKey(editingFile.path)); }}
+                style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer', fontFamily: 'monospace' }}
+              >
+                Discard
+              </button>
+            )}
+            <button
+              onClick={saveFile}
+              disabled={saving || !isDirty}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 8, background: isDirty ? GREEN : '#1a1a2e', border: 'none', color: isDirty ? '#000' : MUTED, fontWeight: 700, fontSize: 12, cursor: isDirty ? 'pointer' : 'default', fontFamily: 'monospace', transition: 'all 0.15s' }}
+            >
+              {saving ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Save style={{ width: 13, height: 13 }} />}
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+
+        {/* Editor Body: line numbers + textarea */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+          {/* Line numbers */}
+          <div
+            style={{
+              width: 44, background: '#0a0a14', borderRight: `1px solid ${BORDER}`,
+              overflowY: 'hidden', paddingTop: 12, flexShrink: 0, userSelect: 'none',
+              fontFamily: 'monospace', fontSize: 12, color: '#2d2d5a', textAlign: 'right',
+              paddingRight: 8, lineHeight: '1.7',
+            }}
+            aria-hidden
+          >
+            {lines.map((_, i) => (
+              <div key={i}>{i + 1}</div>
+            ))}
+          </div>
+
+          {/* Code textarea */}
+          <textarea
+            ref={editorRef}
+            value={editContent}
+            onChange={e => handleEditorChange(e.target.value)}
+            onKeyDown={handleTabKey}
+            onClick={handleCursorChange}
+            onKeyUp={handleCursorChange}
+            spellCheck={false}
+            style={{
+              flex: 1, background: '#090910', color: '#cccde8', fontFamily: '"Fira Code", "JetBrains Mono", "Cascadia Code", monospace',
+              fontSize: 13, lineHeight: 1.7, padding: '12px 16px', border: 'none', outline: 'none',
+              resize: 'none', overflowY: 'auto', tabSize: 2,
+            }}
+          />
+        </div>
+
+        {/* Status bar */}
+        <div style={{ height: 26, background: meta?.bg || '#0d0d1a', borderTop: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', padding: '0 14px', gap: 16, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: meta?.color || MUTED, fontFamily: 'monospace', fontWeight: 700 }}>{lang}</span>
+          <span style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace' }}>Ln {lineCount}, Col {colPos}</span>
+          <span style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace' }}>
+            {editContent.length < 1024 ? `${editContent.length} B` : `${(editContent.length / 1024).toFixed(1)} KB`}
+          </span>
+          <span style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginLeft: 'auto' }}>
+            Ctrl+S to save · Tab for indent
           </span>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              setCreateType('folder');
-              setShowCreateDialog(true);
-            }}
+      </div>
+    );
+  }
+
+  /* ──────────────────── FILE LIST VIEW ──────────────────── */
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 280px)', background: '#0c0d16' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: `1px solid ${BORDER}`, background: CARD, flexShrink: 0 }}>
+        {/* Breadcrumb */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'monospace', fontSize: 12, color: MUTED, minWidth: 0, flex: 1 }}>
+          <button
+            onClick={() => setCurrentPath('')}
+            style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', padding: '2px 4px', borderRadius: 4, fontFamily: 'monospace', fontSize: 12 }}
           >
-            <FolderPlus className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              setCreateType('file');
-              setShowCreateDialog(true);
-            }}
-          >
-            <FilePlus className="w-4 h-4" />
-          </Button>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="w-4 h-4" />
-          </Button>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={fetchFiles} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleUpload}
-          />
+            /
+          </button>
+          {breadcrumbs.map((crumb, i) => (
+            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <ChevronRight style={{ width: 12, height: 12, color: '#2a2a4a' }} />
+              <button
+                onClick={() => setCurrentPath(breadcrumbs.slice(0, i + 1).join('/'))}
+                style={{ background: 'none', border: 'none', color: i === breadcrumbs.length - 1 ? '#cccde8' : MUTED, cursor: 'pointer', fontFamily: 'monospace', fontSize: 12, padding: '2px 4px', borderRadius: 4 }}
+              >
+                {crumb}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {currentPath && (
+            <button onClick={navigateUp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}>
+              <ChevronLeft style={{ width: 14, height: 14 }} />
+            </button>
+          )}
+          <button onClick={() => { setShowCreateInput('folder'); setNewName(''); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }} title="New folder">
+            <FolderPlus style={{ width: 14, height: 14 }} />
+          </button>
+          <button onClick={() => { setShowCreateInput('file'); setNewName(''); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }} title="New file">
+            <FilePlus style={{ width: 14, height: 14 }} />
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }} title="Upload">
+            <Upload style={{ width: 14, height: 14 }} />
+          </button>
+          <button onClick={fetchFiles} disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }} title="Refresh">
+            <RefreshCw style={{ width: 14, height: 14, animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          </button>
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleUpload} />
         </div>
       </div>
 
-      {/* Bulk Actions Bar */}
-      {hasSelection && (
-        <div className="flex-shrink-0 p-2 border-b border-border bg-muted/50 flex items-center gap-1 sm:gap-2 overflow-x-auto">
-          <span className="text-xs sm:text-sm text-muted-foreground ml-2 whitespace-nowrap">
-            {selectedFiles.size} selected
-          </span>
-          <div className="flex-1" />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBulkDownload}
-            disabled={bulkLoading}
-            className="h-8 px-2 sm:px-3"
-          >
-            <Download className="w-4 h-4 sm:mr-1" />
-            <span className="hidden sm:inline">Download</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBulkArchive}
-            disabled={bulkLoading}
-            className="h-8 px-2 sm:px-3"
-          >
-            <Archive className="w-4 h-4 sm:mr-1" />
-            <span className="hidden sm:inline">Archive</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBulkDelete}
-            disabled={bulkLoading}
-            className="h-8 px-2 sm:px-3 text-destructive hover:text-destructive"
-          >
-            {bulkLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Trash2 className="w-4 h-4 sm:mr-1" />
-                <span className="hidden sm:inline">Delete</span>
-              </>
-            )}
-          </Button>
+      {/* Inline create/rename input */}
+      {(showCreateInput || renaming) && (
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BORDER}`, background: CARD2, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {showCreateInput && (
+            <>
+              {showCreateInput === 'folder' ? <FolderIcon size={22} /> : <FileTypeIcon name={newName || 'file'} size={22} />}
+              <span style={{ fontSize: 11, color: MUTED, fontFamily: 'monospace', flexShrink: 0 }}>
+                New {showCreateInput}:
+              </span>
+            </>
+          )}
+          {renaming && <span style={{ fontSize: 11, color: MUTED, fontFamily: 'monospace', flexShrink: 0 }}>Rename:</span>}
+          <input
+            autoFocus
+            value={renaming ? renameValue : newName}
+            onChange={e => renaming ? setRenameValue(e.target.value) : setNewName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') renaming ? handleRenameSubmit() : handleCreate();
+              if (e.key === 'Escape') { setShowCreateInput(null); setRenaming(null); }
+            }}
+            placeholder={renaming ? renaming.name : (showCreateInput === 'folder' ? 'folder-name' : 'filename.py')}
+            style={{ flex: 1, background: '#090910', border: `1px solid ${GREEN}50`, borderRadius: 7, padding: '5px 10px', fontSize: 12, color: '#cccde8', fontFamily: 'monospace', outline: 'none' }}
+          />
+          <button onClick={renaming ? handleRenameSubmit : handleCreate} disabled={creating} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: GREEN, border: 'none', color: '#000', cursor: 'pointer' }}>
+            {creating ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Check style={{ width: 13, height: 13 }} />}
+          </button>
+          <button onClick={() => { setShowCreateInput(null); setRenaming(null); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}>
+            <X style={{ width: 13, height: 13 }} />
+          </button>
         </div>
       )}
 
-      {/* File List */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-3 min-h-0">
+      {/* File list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
+            <Loader2 style={{ width: 24, height: 24, color: GREEN }} className="animate-spin" />
           </div>
         ) : files.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Folder className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No files yet</p>
-            <p className="text-sm">Create or upload files to get started</p>
+          <div style={{ textAlign: 'center', padding: '48px 16px', color: MUTED }}>
+            <Folder style={{ width: 40, height: 40, margin: '0 auto 12px', opacity: 0.3 }} />
+            <div style={{ fontFamily: 'monospace', fontSize: 13 }}>Empty directory</div>
+            <div style={{ fontSize: 12, marginTop: 6, opacity: 0.6 }}>Create a file or upload to get started</div>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {/* Select All Row */}
-            <div className="flex items-center gap-2 sm:gap-3 p-2 border-b border-border/50 mb-2">
-              <Checkbox
-                checked={isAllSelected}
-                onCheckedChange={toggleSelectAll}
-                className="data-[state=checked]:bg-primary"
-              />
-              <span className="text-xs sm:text-sm text-muted-foreground flex items-center gap-1">
-                <CheckSquare className="w-4 h-4" />
-                Select All
-              </span>
-            </div>
-            
-            {files.map((file) => (
-              <div
-                key={file.path}
-                className={`flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg hover:bg-muted/50 transition-colors ${
-                  selectedFiles.has(file.path) ? 'bg-muted/30' : ''
-                }`}
-              >
-                <Checkbox
-                  checked={selectedFiles.has(file.path)}
-                  onCheckedChange={() => toggleSelect(file.path)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="data-[state=checked]:bg-primary flex-shrink-0"
-                />
-                <button
-                  className="flex items-center gap-2 sm:gap-3 flex-1 text-left min-w-0"
-                  onClick={() =>
-                    file.type === 'directory' ? navigateToFolder(file) : handleEdit(file)
-                  }
-                  disabled={loadingFileId === file.path}
-                >
-                  <span className="flex-shrink-0">
-                    {loadingFileId === file.path ? (
-                      <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                    ) : (
-                      getFileIcon(file)
-                    )}
-                  </span>
-                  <span className="truncate text-sm">{file.name}</span>
-                  {file.size !== null && file.type === 'file' && (
-                    <span className="text-xs text-muted-foreground ml-auto mr-1 hidden sm:block">
-                      {file.size < 1024 ? `${file.size} B` : `${(file.size / 1024).toFixed(1)} KB`}
-                    </span>
-                  )}
-                </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 flex-shrink-0"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {file.type === 'file' && (
-                      <DropdownMenuItem onClick={() => handleEdit(file)}>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => handleRename(file)}>
-                      <FileCode className="w-4 h-4 mr-2" />
-                      Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => handleDelete(file)}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+          files.map(file => (
+            <div
+              key={file.path}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', cursor: 'pointer', borderBottom: `1px solid ${BORDER}08`, position: 'relative' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#111122')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              {/* Icon */}
+              <div style={{ flexShrink: 0 }}>
+                {loadingFile === file.path ? (
+                  <Loader2 style={{ width: 32, height: 32, color: GREEN }} className="animate-spin" />
+                ) : file.type === 'directory' ? (
+                  <FolderIcon size={32} />
+                ) : (
+                  <FileTypeIcon name={file.name} size={32} />
+                )}
               </div>
-            ))}
-          </div>
+
+              {/* Name + info */}
+              <button
+                style={{ flex: 1, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', minWidth: 0 }}
+                onClick={() => file.type === 'directory' ? setCurrentPath(file.path) : openFile(file)}
+                disabled={loadingFile === file.path}
+              >
+                <div style={{ fontFamily: 'monospace', fontSize: 13, color: file.type === 'directory' ? '#f0b429' : '#cccde8', fontWeight: file.type === 'directory' ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {file.name}
+                  {file.type === 'directory' && <ChevronRight style={{ width: 12, height: 12, display: 'inline', marginLeft: 4, opacity: 0.5 }} />}
+                </div>
+                {file.type === 'file' && file.size !== null && (
+                  <div style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginTop: 1 }}>
+                    {file.size < 1024 ? `${file.size} B` : `${(file.size / 1024).toFixed(1)} KB`}
+                  </div>
+                )}
+              </button>
+
+              {/* Context menu */}
+              <div className="relative" style={{ flexShrink: 0 }}>
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    const menu = document.getElementById(`menu-${file.path.replace(/\//g, '-')}`);
+                    if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+                    const hideOthers = () => { if (menu) menu.style.display = 'none'; document.removeEventListener('click', hideOthers); };
+                    setTimeout(() => document.addEventListener('click', hideOthers), 10);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}
+                >
+                  <MoreVertical style={{ width: 14, height: 14 }} />
+                </button>
+                <div
+                  id={`menu-${file.path.replace(/\//g, '-')}`}
+                  style={{ display: 'none', position: 'absolute', right: 0, top: 32, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '4px 0', zIndex: 100, minWidth: 140, boxShadow: '0 8px 30px #00000060' }}
+                >
+                  {file.type === 'file' && (
+                    <button onClick={() => openFile(file)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', color: '#cccde8', cursor: 'pointer', fontSize: 12, fontFamily: 'monospace' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = CARD2)} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                      <FileCode style={{ width: 13, height: 13 }} /> Edit
+                    </button>
+                  )}
+                  <button onClick={() => { setRenaming(file); setRenameValue(file.name); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', color: '#cccde8', cursor: 'pointer', fontSize: 12, fontFamily: 'monospace' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = CARD2)} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                    <FileCode style={{ width: 13, height: 13 }} /> Rename
+                  </button>
+                  {file.type === 'file' && (
+                    <button onClick={async () => {
+                      const r = await vmApi.getFileContent(panelId, file.path);
+                      const b = new Blob([r.content], { type: 'text/plain' });
+                      const u = URL.createObjectURL(b);
+                      const a = document.createElement('a'); a.href = u; a.download = file.name;
+                      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+                    }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', color: '#cccde8', cursor: 'pointer', fontSize: 12, fontFamily: 'monospace' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = CARD2)} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                      <Download style={{ width: 13, height: 13 }} /> Download
+                    </button>
+                  )}
+                  <div style={{ height: 1, background: BORDER, margin: '4px 0' }} />
+                  <button onClick={() => handleDelete(file)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 14px', background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: 12, fontFamily: 'monospace' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#ff4d4d15')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                    <Trash2 style={{ width: 13, height: 13 }} /> Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
         )}
       </div>
-
-      {/* Create Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Create New {createType === 'folder' ? 'Folder' : 'File'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Input
-              placeholder={createType === 'folder' ? 'folder-name' : 'filename.js'}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreate}>Create</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-4xl h-[80vh] flex flex-col">
-          <DialogHeader className="flex-row items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
-              <FileCode className="w-5 h-5" />
-              {editingFile?.name}
-              {hasDraft && (
-                <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded font-normal">
-                  Draft
-                </span>
-              )}
-            </DialogTitle>
-            <div className="flex items-center gap-2">
-              {hasDraft && (
-                <Button size="sm" variant="outline" onClick={handleDiscardDraft}>
-                  Discard Draft
-                </Button>
-              )}
-              <Button size="sm" onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
-                Save
-              </Button>
-            </div>
-          </DialogHeader>
-          <Textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className="flex-1 min-h-0 h-full font-mono text-sm resize-none bg-muted/50"
-            placeholder="File content..."
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Rename Dialog */}
-      <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Rename {renamingFile?.type === 'directory' ? 'Folder' : 'File'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Input
-              placeholder="New name"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleRenameSubmit} disabled={saving}>
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Rename'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

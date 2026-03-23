@@ -107,7 +107,20 @@ const PanelPage = () => {
       toast({ title: 'Error', description: 'Panel not found', variant: 'destructive' });
       navigate('/dashboard');
     } else {
-      setPanel(data as Panel);
+      const p = data as Panel;
+      // Auto-delete if expired > 7 days ago
+      if (p.expires_at) {
+        const expiresAt = new Date(p.expires_at).getTime();
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        if (expiresAt < sevenDaysAgo) {
+          try { await vmApi.delete(p.id); } catch { }
+          await supabase.from('panels').delete().eq('id', p.id);
+          toast({ title: 'Panel Removed', description: `"${p.name}" expired over 7 days ago and has been automatically deleted.`, variant: 'destructive' });
+          navigate('/dashboard');
+          return;
+        }
+      }
+      setPanel(p);
     }
     setLoading(false);
   };
@@ -159,11 +172,29 @@ const PanelPage = () => {
       toast({ title: 'Panel started', description: result.message || 'Now running' });
       fetchVmStatus();
     } catch (error: any) {
-      const msg = error.message || 'Failed to start';
+      const raw = error.message || 'Failed to start';
+      // Parse friendly error messages
+      let friendlyMsg = raw;
+      if (raw.includes('non-2xx') || raw.includes('fetch failed') || raw.includes('network')) {
+        friendlyMsg = 'Could not reach the deployment server. Please try again.';
+      } else if (raw.includes('ENOENT') || raw.includes('no such file')) {
+        const entryPoint = panel.entry_point || (panel.language === 'python' ? 'main.py' : 'index.js');
+        friendlyMsg = `Entry point "${entryPoint}" not found. Upload your code or check Startup settings.`;
+      } else if (raw.includes('SyntaxError') || raw.includes('syntax error')) {
+        friendlyMsg = 'Your code has a syntax error. Check the Console tab for details.';
+      } else if (raw.includes('timeout') || raw.includes('timed out')) {
+        friendlyMsg = 'Startup timed out. Your app may have crashed on launch. Check Console.';
+      } else if (raw.includes('port') || raw.includes('EADDRINUSE')) {
+        friendlyMsg = 'Port conflict — the app may already be running. Try Restart instead.';
+      } else if (raw.includes('memory') || raw.includes('OOM')) {
+        friendlyMsg = 'Out of memory. Consider upgrading your plan or optimizing your app.';
+      } else if (raw.includes('npm') || raw.includes('pip') || raw.includes('module not found') || raw.includes('ModuleNotFoundError') || raw.includes('Cannot find module')) {
+        friendlyMsg = `Dependency install failed. Ensure your ${panel.language === 'python' ? 'requirements.txt' : 'package.json'} is correct.`;
+      }
       await supabase.from('panels').update({ status: 'error' }).eq('id', id);
-      await supabase.from('panel_logs').insert({ panel_id: id, message: `Error: ${msg}`, log_type: 'error' });
+      await supabase.from('panel_logs').insert({ panel_id: id, message: `Error: ${friendlyMsg}`, log_type: 'error' });
       setPanel({ ...panel, status: 'error' });
-      toast({ title: 'Startup Failed', description: msg, variant: 'destructive' });
+      toast({ title: 'Startup Failed', description: friendlyMsg, variant: 'destructive' });
     }
     setActionLoading(false);
   };
@@ -228,6 +259,7 @@ const PanelPage = () => {
   const restartLimitHit = (vmStatus as any)?.restart_limit_hit ?? false;
   const langColor = panel.language === 'nodejs' ? 'nodejs' : 'python';
   const langCode = panel.language === 'nodejs' ? 'JS' : 'PY';
+  const isExpired = panel.expires_at ? new Date(panel.expires_at).getTime() < Date.now() : false;
 
   const statusConfig = {
     running:   { dot: 'bg-success shadow-[0_0_6px_1px_hsl(var(--success)/0.5)]', badge: 'text-success bg-success/10 border-success/25', label: 'Online' },
@@ -275,6 +307,24 @@ const PanelPage = () => {
       {/* Renewal Warning */}
       <RenewalWarning panelId={panel.id} expiresAt={panel.expires_at ?? null} />
 
+      {/* Expired banner */}
+      {isExpired && (
+        <div className="px-4 py-3 bg-destructive/10 border-b border-destructive/30">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-destructive">Panel Expired</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                This panel expired on {new Date(panel.expires_at!).toLocaleDateString()}. Renew to start or run your app. It will be auto-deleted in 7 days.
+              </p>
+            </div>
+            <Button size="sm" className="shrink-0 h-7 text-xs bg-primary" onClick={() => navigate('/pricing')}>
+              Renew Now
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Restart limit banner */}
       {restartLimitHit && effectiveStatus === 'stopped' && (
         <div className="px-4 py-3 bg-destructive/5 border-b border-destructive/20">
@@ -297,15 +347,26 @@ const PanelPage = () => {
       <div className="px-4 py-3 border-b border-border bg-card/40">
         <div className="flex gap-2">
           {/* Start */}
-          <Button
-            size="sm"
-            onClick={handleStart}
-            disabled={actionLoading || isRunning || isDeploying}
-            className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-40 h-9 gap-1.5"
-          >
-            {actionLoading && !isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-            Start
-          </Button>
+          {isExpired ? (
+            <Button
+              size="sm"
+              onClick={() => navigate('/pricing')}
+              className="flex-1 bg-destructive hover:bg-destructive/90 h-9 gap-1.5 text-white"
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+              Renew to Start
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={handleStart}
+              disabled={actionLoading || isRunning || isDeploying}
+              className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-40 h-9 gap-1.5"
+            >
+              {actionLoading && !isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+              Start
+            </Button>
+          )}
 
           {/* Restart */}
           <Button
