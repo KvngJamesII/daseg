@@ -17,18 +17,8 @@ Build a complete, production-ready VPS hosting platform as a mobile-first React 
 
 ## Brand & Visual Identity
 
-- **App name:** (choose a unique name — e.g. NexHost, DevNest, ShipHost)
-- **Primary color:** a vivid green (like `#00e676`) — everything glows from it
-- **Dark navy background:** `#0c0d16` (slightly lighter than pure black)
-- **Card:** `#0d0d1a`, hover card `#111122`
-- **Borders:** `#1a1a2e`
-- **Muted text:** `#5a5a88`
-- **Accent colors:** cyan `#00b0ff`, amber `#f0b429`, red `#ff4d4d`
-- **Dot grid background:** a full-screen SVG pattern of tiny green dots at 5% opacity — present on all authenticated pages
-- **Style:** developer terminal aesthetic — monospace fonts, `$` prompt decorations, code-style labels, macOS window dots (red/yellow/green) on terminal UIs
-- **Google Fonts:** `@import url('https://fonts.googleapis.com/...')` MUST be the absolute first line of index.css before any Tailwind directives
-
----
+- **App name:** iHost
+- UI Design has to be highly topnotch like vercel or render but way more better, you cant create design prototypes and ask me to choose
 
 ## Pages & Routes
 
@@ -46,7 +36,7 @@ Build a complete, production-ready VPS hosting platform as a mobile-first React 
 - Login / Signup toggle (switch between them seamlessly, no separate routes)
 - Supabase email+password auth
 - On signup: also creates a profile row in `profiles` table
-- After login → redirect to `/dashboard`
+- After login/signup → redirect to `/dashboard`
 - Clean card design, no clutter
 
 ### 3. Dashboard (`/dashboard`)
