@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { vmApi, FileEntry } from '@/lib/vmApi';
 import { useToast } from '@/hooks/use-toast';
 import {
-  ChevronRight, ChevronLeft, Folder, FolderOpen, Upload, Trash2,
+  ChevronLeft, Folder, FolderOpen, Upload, Trash2,
   FilePlus, FolderPlus, RefreshCw, Save, X, ArrowLeft, Loader2,
-  Download, MoreHorizontal, Check,
+  Download, MoreHorizontal, Check, File,
 } from 'lucide-react';
 
 interface PFile { name: string; path: string; type: 'file' | 'directory'; size: number | null; }
@@ -16,32 +16,61 @@ const langName: Record<string, string> = {
   sh: 'Shell', env: 'Env', yml: 'YAML', yaml: 'YAML', sql: 'SQL', txt: 'Plain Text',
 };
 
-/* ── Editor tab language badge config (still used in editor bar) ── */
-type IconCfg = { color: string; dot: string };
-const EXT: Record<string, IconCfg> = {
-  py:   { color: '#4584b6', dot: '#ffde57' },
-  js:   { color: '#f7df1e', dot: '#323330' },
-  ts:   { color: '#fff',    dot: '#3178c6' },
-  jsx:  { color: '#61dafb', dot: '#20232a' },
-  tsx:  { color: '#61dafb', dot: '#20232a' },
-  json: { color: '#c4b5fd', dot: '#1e1b4b' },
-  html: { color: '#fff',    dot: '#e34c26' },
-  css:  { color: '#fff',    dot: '#264de4' },
-  scss: { color: '#fff',    dot: '#cc6699' },
-  md:   { color: '#e2e8f0', dot: '#2d3748' },
-  sh:   { color: '#000',    dot: '#3fb950' },
-  env:  { color: '#000',    dot: '#f0b429' },
-  yml:  { color: '#fff',    dot: '#cb171e' },
-  yaml: { color: '#fff',    dot: '#cb171e' },
-  sql:  { color: '#fff',    dot: '#00b0ff' },
-  txt:  { color: '#8b949e', dot: '#21262d' },
-  toml: { color: '#9b9b9b', dot: '#21262d' },
-  lock: { color: '#f0b429', dot: '#21262d' },
-  ini:  { color: '#8b949e', dot: '#21262d' },
-  log:  { color: '#3fb950', dot: '#0d2b0d' },
+/* ─── Flat badge icon used in the file tree ─────────────────── */
+type BadgeCfg = { bg: string; fg: string; label: string; fontSize?: number };
+const BADGE: Record<string, BadgeCfg> = {
+  py:   { bg: '#2b5b84', fg: '#ffde57', label: 'PY' },
+  js:   { bg: '#f7df1e', fg: '#323330', label: 'JS' },
+  ts:   { bg: '#3178c6', fg: '#ffffff', label: 'TS' },
+  jsx:  { bg: '#20232a', fg: '#61dafb', label: 'JSX', fontSize: 5.5 },
+  tsx:  { bg: '#1a2035', fg: '#61dafb', label: 'TSX', fontSize: 5.5 },
+  json: { bg: '#312e81', fg: '#c4b5fd', label: '{}' },
+  html: { bg: '#e34c26', fg: '#ffffff', label: 'HTM', fontSize: 5 },
+  css:  { bg: '#264de4', fg: '#ffffff', label: 'CSS' },
+  scss: { bg: '#cc6699', fg: '#ffffff', label: 'SC' },
+  md:   { bg: '#334155', fg: '#e2e8f0', label: 'MD' },
+  sh:   { bg: '#14532d', fg: '#4ade80', label: '$' },
+  env:  { bg: '#78350f', fg: '#fbbf24', label: '.E' },
+  yml:  { bg: '#7f1d1d', fg: '#fca5a5', label: 'YML', fontSize: 5.5 },
+  yaml: { bg: '#7f1d1d', fg: '#fca5a5', label: 'YML', fontSize: 5.5 },
+  sql:  { bg: '#0c4a6e', fg: '#38bdf8', label: 'DB' },
+  txt:  { bg: '#374151', fg: '#9ca3af', label: 'TXT', fontSize: 5.5 },
+  toml: { bg: '#374151', fg: '#f0b429', label: 'TOM', fontSize: 5.5 },
+  ini:  { bg: '#374151', fg: '#9ca3af', label: 'INI', fontSize: 5.5 },
+  lock: { bg: '#292524', fg: '#f0b429', label: 'LK' },
+  log:  { bg: '#14532d', fg: '#4ade80', label: 'LOG', fontSize: 5.5 },
+  gitignore: { bg: '#7c3aed', fg: '#fff', label: 'GIT', fontSize: 5.5 },
+  npmrc:     { bg: '#cc0000', fg: '#fff', label: 'NPM', fontSize: 5.5 },
 };
 
-/* ── SVG file-type document icons ─────────────────────── */
+function FileBadge({ name, size = 16 }: { name: string; size?: number }) {
+  const dot = name.startsWith('.') && !name.includes('.', 1) ? name.slice(1) : null;
+  const ext = dot ?? name.split('.').pop()?.toLowerCase() ?? '';
+  const cfg = BADGE[ext];
+  const h = Math.round(size * 1.25);
+  if (!cfg) {
+    return <File style={{ width: size, height: size, color: '#6b7280', flexShrink: 0 }} />;
+  }
+  const fs = cfg.fontSize ?? 6.5;
+  return (
+    <svg width={size} height={h} viewBox={`0 0 ${size} ${h}`} style={{ flexShrink: 0 }}>
+      <rect x="0" y="0" width={size} height={h} rx="2.5" fill={cfg.bg} />
+      <text
+        x={size / 2} y={h * 0.73}
+        textAnchor="middle"
+        fontSize={fs * (size / 16)}
+        fontWeight="800"
+        fontFamily="monospace"
+        fill={cfg.fg}
+        letterSpacing="-0.5"
+      >
+        {cfg.label}
+      </text>
+    </svg>
+  );
+}
+
+/* ─── Richer doc icon used only in editor title bar ─────────── */
 function Doc({ bg, fold, size, children }: { bg: string; fold: string; size: number; children?: React.ReactNode }) {
   return (
     <svg width={size} height={Math.round(size * 1.2)} viewBox="0 0 20 24" fill="none" style={{ flexShrink: 0 }}>
@@ -52,135 +81,29 @@ function Doc({ bg, fold, size, children }: { bg: string; fold: string; size: num
   );
 }
 
-function FileIcon({ name, size = 20 }: { name: string; size?: number }) {
+function FileDocIcon({ name, size = 20 }: { name: string; size?: number }) {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
-    case 'py': return (
-      <Doc bg="#2b5b84" fold="#1a3a54" size={size}>
-        <ellipse cx="8.5" cy="13.5" rx="3.5" ry="2.2" fill="#ffde57" opacity="0.9" />
-        <ellipse cx="11.5" cy="16.5" rx="3.5" ry="2.2" fill="#4584b6" opacity="0.9" />
-        <circle cx="7.5" cy="13" r="0.9" fill="#2b5b84" />
-        <circle cx="12.5" cy="17" r="0.9" fill="#ffde57" />
-      </Doc>
-    );
-    case 'js': return (
-      <Doc bg="#2a2700" fold="#1a1800" size={size}>
-        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#f7df1e" />
-        <text x="7.5" y="18.5" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#323330">JS</text>
-      </Doc>
-    );
-    case 'ts': return (
-      <Doc bg="#0d1f36" fold="#061426" size={size}>
-        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#3178c6" />
-        <text x="7.5" y="18.5" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#fff">TS</text>
-      </Doc>
-    );
-    case 'jsx': return (
-      <Doc bg="#20232a" fold="#111316" size={size}>
-        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#61dafb" />
-        <text x="5.5" y="18.5" fontSize="5.5" fontWeight="900" fontFamily="monospace" fill="#20232a">JSX</text>
-      </Doc>
-    );
-    case 'tsx': return (
-      <Doc bg="#1a2035" fold="#0f1322" size={size}>
-        <rect x="4" y="10" width="12" height="10" rx="1.5" fill="#61dafb" />
-        <text x="5.5" y="18.5" fontSize="5.5" fontWeight="900" fontFamily="monospace" fill="#20232a">TSX</text>
-      </Doc>
-    );
-    case 'json': return (
-      <Doc bg="#1e1b4b" fold="#13103a" size={size}>
-        <text x="5" y="17.5" fontSize="9" fontWeight="900" fontFamily="monospace" fill="#c4b5fd">&#123;&#125;</text>
-      </Doc>
-    );
-    case 'html': return (
-      <Doc bg="#7a2a14" fold="#551e0e" size={size}>
-        <text x="5.5" y="17.5" fontSize="8" fontWeight="900" fontFamily="monospace" fill="#ff7852">&lt;/&gt;</text>
-      </Doc>
-    );
-    case 'css': return (
-      <Doc bg="#0e1f6e" fold="#091354" size={size}>
-        <rect x="5" y="11" width="10" height="2" rx="1" fill="#4b6ef5" />
-        <rect x="5" y="14" width="8" height="2" rx="1" fill="#7c9cff" />
-        <rect x="5" y="17" width="5" height="2" rx="1" fill="#a8c0ff" />
-      </Doc>
-    );
-    case 'scss': return (
-      <Doc bg="#3d1a2e" fold="#2a1020" size={size}>
-        <text x="6" y="18" fontSize="10" fontWeight="900" fontFamily="monospace" fill="#cc6699">S</text>
-      </Doc>
-    );
-    case 'md': return (
-      <Doc bg="#2d3748" fold="#1a212e" size={size}>
-        <text x="4.5" y="16" fontSize="7" fontWeight="900" fontFamily="monospace" fill="#e2e8f0">M</text>
-        <path d="M13 13 L13 18 L11 16 M13 18 L15 16" stroke="#e2e8f0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </Doc>
-    );
-    case 'sh': return (
-      <Doc bg="#0d2b0d" fold="#071a07" size={size}>
-        <text x="4.5" y="17.5" fontSize="8" fontWeight="900" fontFamily="monospace" fill="#3fb950">$_</text>
-      </Doc>
-    );
-    case 'env': return (
-      <Doc bg="#2d2000" fold="#1a1200" size={size}>
-        <text x="4.5" y="17" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#f0b429">.env</text>
-      </Doc>
-    );
-    case 'yml':
-    case 'yaml': return (
-      <Doc bg="#3a0a0a" fold="#250707" size={size}>
-        <text x="6.5" y="17.5" fontSize="9" fontWeight="900" fontFamily="monospace" fill="#cb171e">Y</text>
-      </Doc>
-    );
-    case 'sql': return (
-      <Doc bg="#002540" fold="#001528" size={size}>
-        <ellipse cx="10" cy="12" rx="4.5" ry="1.5" fill="#00b0ff" opacity="0.8" />
-        <rect x="5.5" y="12" width="9" height="5" fill="#0080bb" />
-        <ellipse cx="10" cy="17" rx="4.5" ry="1.5" fill="#00b0ff" />
-      </Doc>
-    );
-    case 'txt': return (
-      <Doc bg="#1c2128" fold="#10151c" size={size}>
-        <rect x="5" y="11" width="10" height="1.5" rx="0.75" fill="#8b949e" />
-        <rect x="5" y="14" width="8" height="1.5" rx="0.75" fill="#8b949e" opacity="0.7" />
-        <rect x="5" y="17" width="6" height="1.5" rx="0.75" fill="#8b949e" opacity="0.5" />
-      </Doc>
-    );
-    case 'toml':
-    case 'ini': return (
-      <Doc bg="#1c2128" fold="#10151c" size={size}>
-        <rect x="5" y="11" width="10" height="1.5" rx="0.75" fill="#9b9b9b" />
-        <rect x="5" y="14.5" width="4" height="1.5" rx="0.75" fill="#f0b429" />
-        <rect x="10" y="14.5" width="5" height="1.5" rx="0.75" fill="#9b9b9b" opacity="0.7" />
-        <rect x="5" y="18" width="7" height="1.5" rx="0.75" fill="#9b9b9b" opacity="0.5" />
-      </Doc>
-    );
-    case 'lock': return (
-      <Doc bg="#1c2128" fold="#10151c" size={size}>
-        <rect x="7" y="14" width="6" height="5" rx="1" fill="#f0b429" />
-        <path d="M8.5 14V12.5C8.5 11.4 11.5 11.4 11.5 12.5V14" stroke="#f0b429" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="10" cy="16.5" r="1" fill="#1c2128" />
-      </Doc>
-    );
-    case 'log': return (
-      <Doc bg="#0d2b0d" fold="#071a07" size={size}>
-        <rect x="5" y="11" width="10" height="1.5" rx="0.75" fill="#3fb950" />
-        <rect x="5" y="14" width="7" height="1.5" rx="0.75" fill="#3fb950" opacity="0.7" />
-        <rect x="5" y="17" width="9" height="1.5" rx="0.75" fill="#3fb950" opacity="0.5" />
-      </Doc>
-    );
+    case 'py': return <Doc bg="#2b5b84" fold="#1a3a54" size={size}><ellipse cx="8.5" cy="13.5" rx="3.5" ry="2.2" fill="#ffde57" opacity="0.9" /><ellipse cx="11.5" cy="16.5" rx="3.5" ry="2.2" fill="#4584b6" opacity="0.9" /></Doc>;
+    case 'js': return <Doc bg="#2a2700" fold="#1a1800" size={size}><rect x="4" y="10" width="12" height="10" rx="1.5" fill="#f7df1e" /><text x="7.5" y="18.5" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#323330">JS</text></Doc>;
+    case 'ts': return <Doc bg="#0d1f36" fold="#061426" size={size}><rect x="4" y="10" width="12" height="10" rx="1.5" fill="#3178c6" /><text x="7.5" y="18.5" fontSize="6.5" fontWeight="900" fontFamily="monospace" fill="#fff">TS</text></Doc>;
+    case 'jsx': return <Doc bg="#20232a" fold="#111316" size={size}><rect x="4" y="10" width="12" height="10" rx="1.5" fill="#61dafb" /><text x="5.5" y="18.5" fontSize="5.5" fontWeight="900" fontFamily="monospace" fill="#20232a">JSX</text></Doc>;
+    case 'tsx': return <Doc bg="#1a2035" fold="#0f1322" size={size}><rect x="4" y="10" width="12" height="10" rx="1.5" fill="#61dafb" /><text x="5.5" y="18.5" fontSize="5.5" fontWeight="900" fontFamily="monospace" fill="#20232a">TSX</text></Doc>;
+    case 'json': return <Doc bg="#1e1b4b" fold="#13103a" size={size}><text x="5" y="17.5" fontSize="9" fontWeight="900" fontFamily="monospace" fill="#c4b5fd">&#123;&#125;</text></Doc>;
+    case 'html': return <Doc bg="#7a2a14" fold="#551e0e" size={size}><text x="5.5" y="17.5" fontSize="8" fontWeight="900" fontFamily="monospace" fill="#ff7852">&lt;/&gt;</text></Doc>;
+    case 'css': return <Doc bg="#0e1f6e" fold="#091354" size={size}><rect x="5" y="11" width="10" height="2" rx="1" fill="#4b6ef5" /><rect x="5" y="14" width="8" height="2" rx="1" fill="#7c9cff" /><rect x="5" y="17" width="5" height="2" rx="1" fill="#a8c0ff" /></Doc>;
+    case 'md': return <Doc bg="#2d3748" fold="#1a212e" size={size}><text x="4.5" y="16" fontSize="7" fontWeight="900" fontFamily="monospace" fill="#e2e8f0">M</text><path d="M13 13 L13 18 L11 16 M13 18 L15 16" stroke="#e2e8f0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></Doc>;
+    case 'sh': return <Doc bg="#0d2b0d" fold="#071a07" size={size}><text x="4.5" y="17.5" fontSize="8" fontWeight="900" fontFamily="monospace" fill="#3fb950">$_</text></Doc>;
     default: return (
       <svg width={size} height={Math.round(size * 1.2)} viewBox="0 0 20 24" fill="none" style={{ flexShrink: 0 }}>
         <path d="M2 3C2 1.9 2.9 1 4 1H13L18 6V21C18 22.1 17.1 23 16 23H4C2.9 23 2 22.1 2 21V3Z" fill="#21262d" stroke="#484f58" strokeWidth="0.5" />
         <path d="M13 1L18 6H14C13.45 6 13 5.55 13 5V1Z" fill="#30363d" />
-        <rect x="5" y="11" width="10" height="1.2" rx="0.6" fill="#484f58" />
-        <rect x="5" y="14" width="8" height="1.2" rx="0.6" fill="#484f58" opacity="0.7" />
-        <rect x="5" y="17" width="6" height="1.2" rx="0.6" fill="#484f58" opacity="0.5" />
       </svg>
     );
   }
 }
 
-function DirIcon({ open, size = 20 }: { open?: boolean; size?: number }) {
+function DirIcon({ open, size = 16 }: { open?: boolean; size?: number }) {
   const FolderComp = open ? FolderOpen : Folder;
   return <FolderComp style={{ width: size, height: size, color: '#e3b341', flexShrink: 0 }} />;
 }
@@ -191,6 +114,17 @@ function fmtSize(b: number | null) {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/* ─── editor lang badge colour ──────────────────────────────── */
+type LangCfg = { bg: string; fg: string };
+const LANG_BADGE: Record<string, LangCfg> = {
+  py: { bg: '#ffde57', fg: '#2b5b84' }, js: { bg: '#f7df1e', fg: '#323330' },
+  ts: { bg: '#3178c6', fg: '#fff' }, jsx: { bg: '#61dafb', fg: '#20232a' },
+  tsx: { bg: '#61dafb', fg: '#20232a' }, json: { bg: '#312e81', fg: '#c4b5fd' },
+  html: { bg: '#e34c26', fg: '#fff' }, css: { bg: '#264de4', fg: '#fff' },
+  scss: { bg: '#cc6699', fg: '#fff' }, md: { bg: '#334155', fg: '#e2e8f0' },
+  sh: { bg: '#14532d', fg: '#4ade80' },
+};
 
 export function FileManager({ panelId }: FileManagerProps) {
   const [files, setFiles]         = useState<PFile[]>([]);
@@ -206,7 +140,7 @@ export function FileManager({ panelId }: FileManagerProps) {
   const [creating, setCreating]   = useState(false);
   const [renaming, setRenaming]   = useState<PFile | null>(null);
   const [renameVal, setRenameVal] = useState('');
-  const [menu, setMenu]           = useState<{ file: PFile; x: number; y: number } | null>(null);
+  const [hoveredPath, setHP]      = useState<string | null>(null);
   const [lineCount, setLC]        = useState(1);
   const [col, setCol]             = useState(1);
   const editorRef  = useRef<HTMLTextAreaElement>(null);
@@ -219,7 +153,6 @@ export function FileManager({ panelId }: FileManagerProps) {
 
   useEffect(() => { fetchFiles(); }, [panelId, path]);
   useEffect(() => { if (createMode) setTimeout(() => newNameRef.current?.focus(), 30); }, [createMode]);
-  useEffect(() => { const close = () => setMenu(null); document.addEventListener('click', close); return () => document.removeEventListener('click', close); }, []);
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -241,14 +174,10 @@ export function FileManager({ panelId }: FileManagerProps) {
       const r = await vmApi.getFileContent(panelId, f.path);
       const draft = localStorage.getItem(draftKey(f.path));
       const content = draft && draft !== r.content ? draft : r.content;
-      setCode(content);
-      setSaved(r.content);
-      setEditing(f);
+      setCode(content); setSaved(r.content); setEditing(f);
       setLC(content.split('\n').length);
       if (draft && draft !== r.content) toast({ title: 'Draft restored', description: 'Unsaved changes loaded.' });
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
-    }
+    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
     setLF(null);
   };
 
@@ -260,9 +189,7 @@ export function FileManager({ panelId }: FileManagerProps) {
       setSaved(code);
       localStorage.removeItem(draftKey(editing.path));
       toast({ title: 'Saved', description: editing.name });
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
-    }
+    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
     setSaving(false);
   };
 
@@ -272,8 +199,7 @@ export function FileManager({ panelId }: FileManagerProps) {
   };
 
   const onCodeChange = (v: string) => {
-    setCode(v);
-    setLC(v.split('\n').length);
+    setCode(v); setLC(v.split('\n').length);
     if (editing) localStorage.setItem(draftKey(editing.path), v);
   };
 
@@ -320,9 +246,7 @@ export function FileManager({ panelId }: FileManagerProps) {
         const r = await vmApi.getFileContent(panelId, renaming.path);
         await vmApi.syncFiles(panelId, [{ path: np, content: r.content }]);
         await vmApi.deleteFile(panelId, renaming.path);
-      } else {
-        await vmApi.createDirectory(panelId, np);
-      }
+      } else { await vmApi.createDirectory(panelId, np); }
       toast({ title: 'Renamed' });
       setRenaming(null); setRenameVal('');
       fetchFiles();
@@ -348,9 +272,7 @@ export function FileManager({ panelId }: FileManagerProps) {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fs = e.target.files; if (!fs) return;
     try {
-      const toSync = await Promise.all(Array.from(fs).map(async f => ({
-        path: path ? `${path}/${f.name}` : f.name, content: await f.text(),
-      })));
+      const toSync = await Promise.all(Array.from(fs).map(async f => ({ path: path ? `${path}/${f.name}` : f.name, content: await f.text() })));
       await vmApi.syncFiles(panelId, toSync);
       toast({ title: 'Uploaded', description: `${fs.length} file(s)` });
       fetchFiles();
@@ -361,40 +283,70 @@ export function FileManager({ panelId }: FileManagerProps) {
   const crumbs = path ? path.split('/').filter(Boolean) : [];
   const ext     = editing?.name.split('.').pop()?.toLowerCase() ?? '';
   const lang    = langName[ext] ?? 'Text';
-  const extCfg  = EXT[ext];
+  const langCfg = LANG_BADGE[ext];
   const lines   = code.split('\n');
 
-  /* ══════════════════════════════════════════════════════════
-     CODE EDITOR VIEW
-  ══════════════════════════════════════════════════════════ */
+  /* ══ FULL-SCREEN EDITOR OVERLAY ══════════════════════════════ */
   if (editing) return (
-    <div style={{ height: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', background: '#0d1117', fontFamily: 'inherit' }}>
-
-      {/* Editor title bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', borderBottom: '1px solid #21262d', background: '#161b22', flexShrink: 0, height: 40 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      zIndex: 9999, display: 'flex', flexDirection: 'column',
+      background: '#0d1117', fontFamily: 'inherit',
+    }}>
+      {/* Title bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 14px', borderBottom: '1px solid #21262d',
+        background: '#161b22', flexShrink: 0, height: 48,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <button
             onClick={closeEditor}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', cursor: 'pointer', flexShrink: 0 }}
+            title="Back to files"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '5px 10px', borderRadius: 6, border: '1px solid #30363d',
+              background: 'transparent', color: '#8b949e', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 12, flexShrink: 0,
+            }}
           >
             <ArrowLeft style={{ width: 13, height: 13 }} />
+            Files
           </button>
-          <FileIcon name={editing.name} size={18} />
-          <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 12.5, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ width: 1, height: 20, background: '#30363d', flexShrink: 0 }} />
+          <FileDocIcon name={editing.name} size={18} />
+          <span style={{
+            fontFamily: '"JetBrains Mono", monospace', fontSize: 13,
+            color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
             {editing.name}
           </span>
-          {isDirty && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#f0b429', flexShrink: 0 }} title="Unsaved" />}
+          {isDirty && (
+            <span
+              style={{ width: 8, height: 8, borderRadius: '50%', background: '#f0b429', flexShrink: 0 }}
+              title="Unsaved changes"
+            />
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          {extCfg && (
-            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: extCfg.dot, color: extCfg.color, fontFamily: 'monospace', fontWeight: 700 }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {langCfg && (
+            <span style={{
+              fontSize: 10.5, padding: '2px 8px', borderRadius: 5,
+              background: langCfg.bg, color: langCfg.fg,
+              fontFamily: 'monospace', fontWeight: 700, letterSpacing: 0.3,
+            }}>
               {lang}
             </span>
           )}
           {isDirty && (
             <button
               onClick={() => { setCode(saved); localStorage.removeItem(draftKey(editing.path)); }}
-              style={{ fontSize: 11, padding: '4px 9px', borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', cursor: 'pointer' }}
+              style={{
+                fontSize: 12, padding: '5px 10px', borderRadius: 6,
+                border: '1px solid #30363d', background: 'transparent',
+                color: '#8b949e', cursor: 'pointer',
+              }}
             >
               Discard
             </button>
@@ -402,25 +354,38 @@ export function FileManager({ panelId }: FileManagerProps) {
           <button
             onClick={saveFile}
             disabled={!isDirty || saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: isDirty ? '#238636' : '#21262d', color: isDirty ? '#fff' : '#484f58', cursor: isDirty ? 'pointer' : 'default', fontWeight: 600, transition: 'all 0.15s' }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 13, padding: '6px 14px', borderRadius: 6, border: 'none',
+              background: isDirty ? '#238636' : '#1c2128',
+              color: isDirty ? '#fff' : '#484f58',
+              cursor: isDirty ? 'pointer' : 'default',
+              fontWeight: 600, transition: 'all 0.15s',
+            }}
           >
-            {saving ? <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} /> : <Save style={{ width: 12, height: 12 }} />}
+            {saving
+              ? <Loader2 style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} />
+              : <Save style={{ width: 13, height: 13 }} />
+            }
             Save
           </button>
         </div>
       </div>
 
-      {/* Editor area: line numbers + code */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        {/* Line numbers */}
+      {/* Editor body: line numbers + textarea */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div
           aria-hidden
-          style={{ width: 48, background: '#0d1117', borderRight: '1px solid #21262d', paddingTop: 14, paddingBottom: 14, paddingRight: 8, fontFamily: '"JetBrains Mono", monospace', fontSize: 12, lineHeight: '1.6', color: '#30363d', textAlign: 'right', overflowY: 'hidden', userSelect: 'none', flexShrink: 0 }}
+          style={{
+            width: 52, background: '#0d1117', borderRight: '1px solid #1c2128',
+            paddingTop: 16, paddingBottom: 16, paddingRight: 8,
+            fontFamily: '"JetBrains Mono", monospace', fontSize: 13, lineHeight: '1.6',
+            color: '#3d444d', textAlign: 'right', overflowY: 'hidden',
+            userSelect: 'none', flexShrink: 0,
+          }}
         >
           {lines.map((_, i) => <div key={i}>{i + 1}</div>)}
         </div>
-
-        {/* Textarea */}
         <textarea
           ref={editorRef}
           value={code}
@@ -431,36 +396,64 @@ export function FileManager({ panelId }: FileManagerProps) {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          style={{ flex: 1, background: '#0d1117', color: '#e6edf3', fontFamily: '"JetBrains Mono", "Fira Code", monospace', fontSize: 13, lineHeight: 1.6, padding: '14px 16px 14px 12px', border: 'none', outline: 'none', resize: 'none', overflowY: 'auto', tabSize: 2, caretColor: '#3fb950' }}
+          style={{
+            flex: 1, background: '#0d1117', color: '#e6edf3',
+            fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+            fontSize: 13.5, lineHeight: 1.6,
+            padding: '16px 20px 16px 14px',
+            border: 'none', outline: 'none', resize: 'none',
+            overflowY: 'auto', tabSize: 2, caretColor: '#3fb950',
+          }}
         />
       </div>
 
       {/* Status bar */}
-      <div style={{ height: 24, background: extCfg ? extCfg.dot : '#21262d', display: 'flex', alignItems: 'center', paddingLeft: 12, gap: 16, flexShrink: 0 }}>
-        <span style={{ fontSize: 11, color: extCfg?.color ?? '#8b949e', fontFamily: 'monospace', fontWeight: 700 }}>{lang}</span>
-        <span style={{ fontSize: 11, color: extCfg?.color ?? '#8b949e', fontFamily: 'monospace', opacity: 0.7 }}>Ln {lineCount}  Col {col}</span>
-        <span style={{ marginLeft: 'auto', paddingRight: 12, fontSize: 10, color: extCfg?.color ?? '#8b949e', fontFamily: 'monospace', opacity: 0.55 }}>Ctrl+S  save · Tab  indent</span>
+      <div style={{
+        height: 26, background: langCfg ? langCfg.bg : '#161b22',
+        display: 'flex', alignItems: 'center', paddingLeft: 14,
+        gap: 20, flexShrink: 0, borderTop: '1px solid #21262d',
+      }}>
+        <span style={{ fontSize: 11.5, color: langCfg?.fg ?? '#8b949e', fontFamily: 'monospace', fontWeight: 700 }}>{lang}</span>
+        <span style={{ fontSize: 11, color: langCfg?.fg ?? '#8b949e', fontFamily: 'monospace', opacity: 0.7 }}>Ln {lineCount}  Col {col}</span>
+        <span style={{ marginLeft: 'auto', paddingRight: 14, fontSize: 10.5, color: langCfg?.fg ?? '#8b949e', fontFamily: 'monospace', opacity: 0.5 }}>
+          Ctrl+S  save · Tab  indent
+        </span>
       </div>
     </div>
   );
 
-  /* ══════════════════════════════════════════════════════════
-     FILE LIST VIEW
-  ══════════════════════════════════════════════════════════ */
+  /* ══ FILE TREE VIEW ══════════════════════════════════════════ */
   return (
-    <div style={{ height: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', background: '#0d1117' }}>
+    <div style={{ height: 'calc(100vh - 180px)', display: 'flex', flexDirection: 'column', background: '#0d1117' }}>
 
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid #21262d', background: '#161b22', flexShrink: 0, gap: 8 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 12px', borderBottom: '1px solid #1c2128',
+        background: '#161b22', flexShrink: 0, gap: 8,
+      }}>
         {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontFamily: '"JetBrains Mono", monospace', fontSize: 11.5, color: '#8b949e', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-          <button onClick={() => setPath('')} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: '2px 3px', borderRadius: 3, fontSize: 11.5, fontFamily: 'monospace' }}>~</button>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0,
+          fontFamily: '"JetBrains Mono", monospace', fontSize: 12, color: '#6b7280',
+          overflow: 'hidden',
+        }}>
+          <button
+            onClick={() => setPath('')}
+            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, fontSize: 12, fontFamily: 'monospace' }}
+          >
+            ~
+          </button>
           {crumbs.map((c, i) => (
             <span key={i} style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ color: '#30363d', margin: '0 1px' }}>/</span>
+              <span style={{ color: '#374151', margin: '0 1px' }}>/</span>
               <button
                 onClick={() => setPath(crumbs.slice(0, i + 1).join('/'))}
-                style={{ background: 'none', border: 'none', color: i === crumbs.length - 1 ? '#e6edf3' : '#8b949e', cursor: 'pointer', padding: '2px 3px', borderRadius: 3, fontSize: 11.5, fontFamily: 'monospace' }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '2px 4px', borderRadius: 3, fontSize: 12, fontFamily: 'monospace',
+                  color: i === crumbs.length - 1 ? '#cdd9e5' : '#6b7280',
+                }}
               >
                 {c}
               </button>
@@ -469,14 +462,24 @@ export function FileManager({ panelId }: FileManagerProps) {
         </div>
 
         {/* Action icons */}
-        <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           {[
-            { title: 'New file', Icon: FilePlus,   act: () => { setCM('file');   setNewName(''); } },
+            { title: 'New file',   Icon: FilePlus,  act: () => { setCM('file');   setNewName(''); } },
             { title: 'New folder', Icon: FolderPlus, act: () => { setCM('folder'); setNewName(''); } },
-            { title: 'Upload',   Icon: Upload,     act: () => fileIn.current?.click() },
-            { title: 'Refresh',  Icon: RefreshCw,  act: fetchFiles },
+            { title: 'Upload',     Icon: Upload,    act: () => fileIn.current?.click() },
+            { title: 'Refresh',    Icon: RefreshCw, act: fetchFiles },
           ].map(({ title, Icon, act }) => (
-            <button key={title} onClick={act} title={title} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', cursor: 'pointer' }}>
+            <button
+              key={title} onClick={act} title={title}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 28, height: 28, borderRadius: 6,
+                border: '1px solid #1c2128', background: 'transparent',
+                color: '#6b7280', cursor: 'pointer', transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#cdd9e5'; e.currentTarget.style.borderColor = '#30363d'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = '#1c2128'; }}
+            >
               <Icon style={{ width: 13, height: 13, animation: title === 'Refresh' && loading ? 'spin 1s linear infinite' : 'none' }} />
             </button>
           ))}
@@ -484,22 +487,30 @@ export function FileManager({ panelId }: FileManagerProps) {
         <input ref={fileIn} type="file" multiple className="hidden" onChange={handleUpload} />
       </div>
 
-      {/* Inline new name input */}
+      {/* Inline create input */}
       {createMode && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #21262d', background: '#161b22' }}>
-          {createMode === 'folder' ? <DirIcon size={16} /> : <FileIcon name={newName || 'file'} size={16} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderBottom: '1px solid #1c2128', background: '#161b22' }}>
+          {createMode === 'folder'
+            ? <DirIcon size={15} />
+            : <FileBadge name={newName || 'file'} size={14} />
+          }
           <input
             ref={newNameRef}
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setCM(null); setNewName(''); } }}
             placeholder={createMode === 'folder' ? 'folder-name' : 'filename.py'}
-            style={{ flex: 1, background: '#0d1117', border: '1px solid #3fb950', borderRadius: 5, padding: '4px 9px', fontFamily: '"JetBrains Mono", monospace', fontSize: 12, color: '#e6edf3', outline: 'none' }}
+            style={{
+              flex: 1, background: '#0d1117', border: '1px solid #3fb950',
+              borderRadius: 5, padding: '5px 10px',
+              fontFamily: '"JetBrains Mono", monospace', fontSize: 12.5,
+              color: '#e6edf3', outline: 'none',
+            }}
           />
-          <button onClick={handleCreate} disabled={creating} style={{ width: 26, height: 26, borderRadius: 5, background: '#238636', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={handleCreate} disabled={creating} style={{ width: 28, height: 28, borderRadius: 5, background: '#238636', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             {creating ? <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} /> : <Check style={{ width: 12, height: 12 }} />}
           </button>
-          <button onClick={() => { setCM(null); setNewName(''); }} style={{ width: 26, height: 26, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={() => { setCM(null); setNewName(''); }} style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <X style={{ width: 12, height: 12 }} />
           </button>
         </div>
@@ -507,121 +518,135 @@ export function FileManager({ panelId }: FileManagerProps) {
 
       {/* Inline rename input */}
       {renaming && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #21262d', background: '#161b22' }}>
-          <span style={{ fontSize: 11, color: '#8b949e', fontFamily: 'monospace', flexShrink: 0 }}>Rename:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderBottom: '1px solid #1c2128', background: '#161b22' }}>
+          <span style={{ fontSize: 11.5, color: '#6b7280', fontFamily: 'monospace', flexShrink: 0 }}>Rename:</span>
           <input
-            autoFocus
-            value={renameVal}
+            autoFocus value={renameVal}
             onChange={e => setRenameVal(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') { setRenaming(null); setRenameVal(''); } }}
-            style={{ flex: 1, background: '#0d1117', border: '1px solid #3fb950', borderRadius: 5, padding: '4px 9px', fontFamily: '"JetBrains Mono", monospace', fontSize: 12, color: '#e6edf3', outline: 'none' }}
+            style={{ flex: 1, background: '#0d1117', border: '1px solid #3fb950', borderRadius: 5, padding: '5px 10px', fontFamily: '"JetBrains Mono", monospace', fontSize: 12.5, color: '#e6edf3', outline: 'none' }}
           />
-          <button onClick={handleRename} style={{ width: 26, height: 26, borderRadius: 5, background: '#238636', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={handleRename} style={{ width: 28, height: 28, borderRadius: 5, background: '#238636', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <Check style={{ width: 12, height: 12 }} />
           </button>
-          <button onClick={() => { setRenaming(null); setRenameVal(''); }} style={{ width: 26, height: 26, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={() => { setRenaming(null); setRenameVal(''); }} style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid #30363d', background: 'transparent', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <X style={{ width: 12, height: 12 }} />
           </button>
         </div>
       )}
 
-      {/* Back row */}
+      {/* Back row (inside folder) */}
       {path && (
         <button
           onClick={() => { const p = path.split('/'); p.pop(); setPath(p.join('/')); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'none', border: 'none', borderBottom: '1px solid #21262d', color: '#8b949e', cursor: 'pointer', fontFamily: '"JetBrains Mono", monospace', fontSize: 12, textAlign: 'left' }}
-          onMouseEnter={e => (e.currentTarget.style.background = '#161b22')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '0 12px', height: 32,
+            background: 'none', border: 'none',
+            borderBottom: '1px solid #1c2128',
+            color: '#6b7280', cursor: 'pointer',
+            fontFamily: '"JetBrains Mono", monospace', fontSize: 12.5,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#161b22'; e.currentTarget.style.color = '#cdd9e5'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#6b7280'; }}
         >
           <ChevronLeft style={{ width: 14, height: 14 }} />
-          ..
+          <span>..</span>
         </button>
       )}
 
       {/* File list */}
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '4px 0' }}>
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
-            <Loader2 style={{ width: 22, height: 22, color: '#3fb950', animation: 'spin 1s linear infinite' }} />
+            <Loader2 style={{ width: 20, height: 20, color: '#3fb950', animation: 'spin 1s linear infinite' }} />
           </div>
         ) : files.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 20px', color: '#484f58', fontFamily: '"JetBrains Mono", monospace', fontSize: 12 }}>
-            <Folder style={{ width: 36, height: 36, margin: '0 auto 12px', opacity: 0.3 }} />
-            <div>Empty directory</div>
-            <div style={{ marginTop: 6, opacity: 0.6, fontSize: 11 }}>Create a file or upload one to get started</div>
+          <div style={{ textAlign: 'center', padding: '48px 24px', color: '#374151', fontFamily: '"JetBrains Mono", monospace', fontSize: 12 }}>
+            <Folder style={{ width: 32, height: 32, margin: '0 auto 12px', opacity: 0.25 }} />
+            <div style={{ color: '#6b7280' }}>Empty directory</div>
+            <div style={{ marginTop: 6, fontSize: 11, opacity: 0.6 }}>Create a file or upload one to get started</div>
           </div>
         ) : (
-          files.map(f => (
-            <div
-              key={f.path}
-              style={{ display: 'flex', alignItems: 'center', padding: '0 10px', height: 34, cursor: 'pointer', position: 'relative' }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#161b22'; (e.currentTarget.querySelector('.actions') as HTMLElement).style.opacity = '1'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; (e.currentTarget.querySelector('.actions') as HTMLElement).style.opacity = '0'; }}
-              onClick={() => f.type === 'directory' ? setPath(f.path) : openFile(f)}
-            >
-              {/* Icon */}
-              <span style={{ marginRight: 9, flexShrink: 0 }}>
-                {loadingFile === f.path
-                  ? <Loader2 style={{ width: 18, height: 18, color: '#3fb950', animation: 'spin 1s linear infinite' }} />
-                  : f.type === 'directory'
-                    ? <DirIcon size={18} />
-                    : <FileIcon name={f.name} size={18} />
-                }
-              </span>
-
-              {/* Name */}
-              <span style={{ flex: 1, fontFamily: '"JetBrains Mono", monospace', fontSize: 12.5, color: f.type === 'directory' ? '#e3b341' : '#c9d1d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {f.name}
-              </span>
-
-              {/* Size */}
-              {f.type === 'file' && f.size !== null && (
-                <span style={{ fontSize: 10.5, color: '#484f58', fontFamily: 'monospace', marginRight: 6, flexShrink: 0 }}>
-                  {fmtSize(f.size)}
-                </span>
-              )}
-
-              {/* Hover actions */}
+          files.map(f => {
+            const isHovered = hoveredPath === f.path;
+            return (
               <div
-                className="actions"
-                style={{ display: 'flex', gap: 3, opacity: 0, transition: 'opacity 0.1s', flexShrink: 0 }}
-                onClick={e => e.stopPropagation()}
+                key={f.path}
+                style={{
+                  display: 'flex', alignItems: 'center',
+                  height: 32, paddingLeft: 12, paddingRight: 8,
+                  cursor: 'pointer',
+                  background: isHovered ? '#161b22' : 'transparent',
+                  transition: 'background 0.1s',
+                  borderRadius: 4, margin: '0 4px',
+                }}
+                onMouseEnter={() => setHP(f.path)}
+                onMouseLeave={() => setHP(null)}
+                onClick={() => f.type === 'directory' ? setPath(f.path) : openFile(f)}
               >
-                {f.type === 'file' && (
-                  <button
-                    onClick={() => openFile(f)}
-                    title="Edit"
-                    style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #30363d', background: '#0d1117', color: '#8b949e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontFamily: 'monospace' }}
-                  >
-                    ✏
-                  </button>
+                {/* Icon */}
+                <span style={{ marginRight: 9, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                  {loadingFile === f.path
+                    ? <Loader2 style={{ width: 15, height: 15, color: '#3fb950', animation: 'spin 1s linear infinite' }} />
+                    : f.type === 'directory'
+                      ? <DirIcon size={15} />
+                      : <FileBadge name={f.name} size={14} />
+                  }
+                </span>
+
+                {/* Name */}
+                <span style={{
+                  flex: 1,
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 13,
+                  color: f.type === 'directory' ? '#e3b341' : '#cdd9e5',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {f.name}
+                </span>
+
+                {/* Size (only shown on non-hover to avoid overlap) */}
+                {f.type === 'file' && f.size !== null && !isHovered && (
+                  <span style={{ fontSize: 10.5, color: '#374151', fontFamily: 'monospace', flexShrink: 0, marginLeft: 4 }}>
+                    {fmtSize(f.size)}
+                  </span>
                 )}
-                <button
-                  onClick={() => { setRenaming(f); setRenameVal(f.name); }}
-                  title="Rename"
-                  style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #30363d', background: '#0d1117', color: '#8b949e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <MoreHorizontal style={{ width: 11, height: 11 }} />
-                </button>
-                {f.type === 'file' && (
-                  <button
-                    onClick={() => handleDownload(f)}
-                    title="Download"
-                    style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #30363d', background: '#0d1117', color: '#8b949e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+
+                {/* Hover actions */}
+                {isHovered && (
+                  <div
+                    style={{ display: 'flex', gap: 3, flexShrink: 0 }}
+                    onClick={e => e.stopPropagation()}
                   >
-                    <Download style={{ width: 11, height: 11 }} />
-                  </button>
+                    <button
+                      onClick={() => { setRenaming(f); setRenameVal(f.name); }}
+                      title="Rename"
+                      style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #30363d', background: '#0d1117', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <MoreHorizontal style={{ width: 11, height: 11 }} />
+                    </button>
+                    {f.type === 'file' && (
+                      <button
+                        onClick={() => handleDownload(f)}
+                        title="Download"
+                        style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #30363d', background: '#0d1117', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Download style={{ width: 11, height: 11 }} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(f)}
+                      title="Delete"
+                      style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid rgba(248,81,73,0.3)', background: '#0d1117', color: '#f85149', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Trash2 style={{ width: 11, height: 11 }} />
+                    </button>
+                  </div>
                 )}
-                <button
-                  onClick={() => handleDelete(f)}
-                  title="Delete"
-                  style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid #ff000040', background: '#0d1117', color: '#f85149', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Trash2 style={{ width: 11, height: 11 }} />
-                </button>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
