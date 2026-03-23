@@ -30,10 +30,12 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
-const BG      = '#131525';
-const CARD    = '#1a1d35';
-const BORDER  = '#252848';
-const MUTED   = '#7a88aa';
+const BG      = '#0c0d16';   /* dark navy — just a touch lighter than original */
+const CARD    = '#0d0d1a';   /* near-black card — keeps green popping */
+const CARD2   = '#111122';   /* slightly lighter card for hover/alternate */
+const BORDER  = '#1a1a2e';   /* barely-visible border — identical to VariantD */
+const MUTED   = '#5a5a88';   /* readable soft purple-grey for icon/text hints */
+const LABEL   = '#303050';   /* nearly-invisible dark label — makes coloured numbers pop */
 const GREEN   = '#00e676';
 const CYAN    = '#00b0ff';
 const AMBER   = '#f0b429';
@@ -377,8 +379,8 @@ const Dashboard = () => {
         <header style={{
           padding: '13px 18px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: `1px solid ${BORDER}`,
-          background: `${BG}ee`,
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgba(12,13,22,0.93)',
           backdropFilter: 'blur(12px)',
           position: 'sticky', top: 0, zIndex: 50,
         }}>
@@ -540,8 +542,8 @@ const Dashboard = () => {
               { label: 'PLAN', value: isPremium ? 'PRO' : 'FREE', color: isPremium ? AMBER : MUTED },
             ].map(s => (
               <div key={s.label} style={{ background: CARD, border: `1px solid ${s.color}28`, borderRadius: 16, padding: '13px 11px 9px', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ fontSize: 9, color: MUTED, letterSpacing: '0.12em', fontWeight: 600, marginBottom: 5 }}>{s.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{s.value}</div>
+                <div style={{ fontSize: 9, color: LABEL, letterSpacing: '0.12em', fontWeight: 600, marginBottom: 5 }}>{s.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{s.value}</div>
                 <div style={{ position: 'absolute', bottom: 4, right: 2, opacity: 0.3 }}>
                   <Sparkline color={s.color} />
                 </div>
@@ -552,7 +554,7 @@ const Dashboard = () => {
           {/* Capacity bar */}
           <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 10, color: MUTED, letterSpacing: '0.1em', fontWeight: 600 }}>CAPACITY</span>
+              <span style={{ fontSize: 10, color: LABEL, letterSpacing: '0.1em', fontWeight: 600 }}>CAPACITY</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: CYAN }}>{panels.length} / {panelsLimit || '—'}</span>
             </div>
             <div style={{ height: 4, background: BORDER, borderRadius: 4, overflow: 'hidden' }}>
@@ -636,7 +638,7 @@ const Dashboard = () => {
 
           {/* Panels section */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: MUTED, letterSpacing: '0.12em', fontWeight: 700 }}>YOUR PANELS</span>
+            <span style={{ fontSize: 10, color: LABEL, letterSpacing: '0.12em', fontWeight: 700 }}>YOUR PANELS</span>
             {canCreatePanel && (
               <button
                 onClick={() => setShowCreateDialog(true)}
@@ -684,7 +686,7 @@ const Dashboard = () => {
               const statusColor =
                 panel.status === 'running' ? GREEN :
                 panel.status === 'deploying' ? AMBER :
-                panel.status === 'error' ? RED : '#4a5570';
+                panel.status === 'error' ? RED : MUTED;
               const statusLabel =
                 panel.status === 'running' ? 'ONLINE' :
                 panel.status === 'deploying' ? 'DEPLOYING' :
