@@ -76,6 +76,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
   const inputRef       = useRef<HTMLInputElement>(null);
   const suppressUntil  = useRef<number>(0);
   const prevStatus     = useRef<string>('');
+  const lastPanelId    = useRef<string>('');
 
   const push = (kind: Line['kind'], text: string) =>
     setLines(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, kind, text, ts: Date.now() }]);
@@ -139,19 +140,25 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
   };
 
   useEffect(() => {
+    // When the panel changes (navigation) or component first mounts, seed
+    // prevStatus so we don't mistake "already running" for a fresh restart.
+    if (lastPanelId.current !== panelId) {
+      lastPanelId.current = panelId;
+      prevStatus.current  = panelStatus;
+    }
+
     if (panelStatus === 'running') {
       const wasRunning = prevStatus.current === 'running';
       prevStatus.current = 'running';
 
-      // On every transition INTO running (fresh start or restart):
-      // clear display + wipe server-side PM2 logs so old output doesn't bleed in
       if (!wasRunning) {
+        // Real start/restart transition — wipe old output
         setLines([]);
         suppressUntil.current = 0;
         vmApi.clearLogs(panelId).catch(() => {});
-        // Give PM2 ~2 s to flush new output before fetching
         setTimeout(fetchLogs, 2000);
       } else {
+        // Already running (mount / re-render) — just load logs
         fetchLogs();
       }
     } else {
