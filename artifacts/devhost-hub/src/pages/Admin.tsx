@@ -39,6 +39,8 @@ import {
   Settings,
   DollarSign,
   BarChart3,
+  Bell,
+  Send,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -194,6 +196,11 @@ const Admin = () => {
   const [searchingPanel, setSearchingPanel] = useState(false);
   const [managedPanel, setManagedPanel] = useState<ManagedPanel | null>(null);
   const [extendDuration, setExtendDuration] = useState('720'); // hours
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifType, setNotifType] = useState<'info' | 'success' | 'warning'>('info');
+  const [notifTarget, setNotifTarget] = useState('all');
+  const [sendingNotif, setSendingNotif] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -547,6 +554,42 @@ const Admin = () => {
     }
   };
 
+  const handleSendNotification = async () => {
+    if (!notifTitle.trim() || !user) return;
+    setSendingNotif(true);
+    const payload: Record<string, unknown> = {
+      title: notifTitle.trim(),
+      message: notifMessage.trim(),
+      type: notifType,
+      is_global: notifTarget === 'all',
+      read_by: [],
+    };
+    if (notifTarget !== 'all') {
+      const found = users.find(u =>
+        u.email.toLowerCase() === notifTarget.toLowerCase() ||
+        u.username?.toLowerCase() === notifTarget.toLowerCase()
+      );
+      if (!found) {
+        toast({ title: 'User not found', description: `No user matching "${notifTarget}"`, variant: 'destructive' });
+        setSendingNotif(false);
+        return;
+      }
+      payload.user_id = found.id;
+      payload.is_global = false;
+    }
+    const { error } = await (supabase as any).from('notifications').insert(payload);
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Notification sent!', description: notifTarget === 'all' ? 'Broadcasted to all users' : `Sent to ${notifTarget}` });
+      setNotifTitle('');
+      setNotifMessage('');
+      setNotifTarget('all');
+      setNotifType('info');
+    }
+    setSendingNotif(false);
+  };
+
   const filteredUsers = users.filter(
     (u) =>
       u.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -619,6 +662,9 @@ const Admin = () => {
             <TabsTrigger value="panels" className="font-mono text-xs py-2">Panels</TabsTrigger>
             <TabsTrigger value="codes" className="font-mono text-xs py-2">Codes</TabsTrigger>
             <TabsTrigger value="finance" className="font-mono text-xs py-2">Finance</TabsTrigger>
+            <TabsTrigger value="notify" className="font-mono text-xs py-2 flex items-center gap-1">
+              <Bell className="w-3 h-3" />Notify
+            </TabsTrigger>
           </TabsList>
 
           {/* Analytics Tab */}
@@ -1025,6 +1071,113 @@ const Admin = () => {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Notify Tab */}
+          <TabsContent value="notify" className="space-y-4">
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-2 mb-5">
+                  <Bell className="w-5 h-5 text-primary" />
+                  <h3 className="font-bold text-foreground text-lg">Broadcast Notification</h3>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Target */}
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1.5 block">Target</label>
+                    <div className="flex gap-2">
+                      {['all', 'user'].map(t => (
+                        <button
+                          key={t}
+                          onClick={() => { setNotifTarget(t === 'all' ? 'all' : ''); }}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${notifTarget === 'all' && t === 'all' ? 'bg-primary text-primary-foreground border-primary' : notifTarget !== 'all' && t === 'user' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent border-border text-muted-foreground'}`}
+                        >
+                          {t === 'all' ? 'All Users' : 'Specific User'}
+                        </button>
+                      ))}
+                    </div>
+                    {notifTarget !== 'all' && (
+                      <Input
+                        className="mt-2"
+                        placeholder="Email or username"
+                        value={notifTarget}
+                        onChange={e => setNotifTarget(e.target.value)}
+                      />
+                    )}
+                  </div>
+
+                  {/* Type */}
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1.5 block">Type</label>
+                    <div className="flex gap-2">
+                      {(['info', 'success', 'warning'] as const).map(t => {
+                        const colors: Record<string, string> = { info: '#00b0ff', success: '#00e676', warning: '#f0b429' };
+                        const selected = notifType === t;
+                        return (
+                          <button
+                            key={t}
+                            onClick={() => setNotifType(t)}
+                            style={{ border: `1.5px solid ${selected ? colors[t] : 'transparent'}`, background: selected ? `${colors[t]}18` : 'transparent', color: selected ? colors[t] : '#888' }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all"
+                          >
+                            {t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Title */}
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1.5 block">Title</label>
+                    <Input
+                      placeholder="Notification title"
+                      value={notifTitle}
+                      onChange={e => setNotifTitle(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Message */}
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1.5 block">Message (optional)</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Additional details..."
+                      value={notifMessage}
+                      onChange={e => setNotifMessage(e.target.value)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground resize-none outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+
+                  {/* Preview */}
+                  {notifTitle && (
+                    <div className="border border-border rounded-xl p-4 bg-muted/20">
+                      <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">Preview</p>
+                      <div className="flex gap-3 items-start">
+                        <div style={{ width: 4, borderRadius: 4, background: notifType === 'success' ? '#00e676' : notifType === 'warning' ? '#f0b429' : '#00b0ff', alignSelf: 'stretch', minHeight: 32, flexShrink: 0 }} />
+                        <div>
+                          <p className="font-bold text-foreground text-sm">{notifTitle}</p>
+                          {notifMessage && <p className="text-xs text-muted-foreground mt-0.5">{notifMessage}</p>}
+                          <p className="text-xs text-muted-foreground/50 mt-1">just now</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Send button */}
+                  <button
+                    onClick={handleSendNotification}
+                    disabled={sendingNotif || !notifTitle.trim()}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: notifTitle.trim() && !sendingNotif ? '#00e676' : '#1a1d35', color: notifTitle.trim() && !sendingNotif ? '#000' : '#7a88aa', border: 'none', cursor: notifTitle.trim() && !sendingNotif ? 'pointer' : 'not-allowed' }}
+                  >
+                    {sendingNotif ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {sendingNotif ? 'Sending…' : notifTarget === 'all' ? `Broadcast to All Users` : 'Send to User'}
+                  </button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
