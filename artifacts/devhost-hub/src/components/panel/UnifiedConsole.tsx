@@ -207,12 +207,14 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
       setRunning(true);
 
       push('cmd', `→ ${trimmed}`);
-      const escapedInput = trimmed.replace(/"/g, '\\"');
+      // Split on comma so "Alice, 25, Python" becomes 3 stdin lines
+      const parts = trimmed.split(',').map(p => p.trim());
+      const printfStr = parts.map(p => p.replace(/'/g, "'\\''")).join('\\n') + '\\n';
       const runners = language === 'python' ? ['python3', 'python'] : ['node'];
       let succeeded = false;
 
       for (const r of runners) {
-        const pipedCmd = `echo "${escapedInput}" | ${r} ${entryPoint}`;
+        const pipedCmd = `printf '${printfStr}' | ${r} ${entryPoint}`;
         try {
           const res = await vmApi.exec(panelId, pipedCmd);
           const out = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
@@ -297,7 +299,7 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
   const inputPlaceholder = running
     ? ''
     : isRunning
-      ? `type your answer… (→ pipes to ${entryPoint})`
+      ? `answer, next answer, … (comma = multiple inputs)`
       : 'type a command…';
 
   return (
