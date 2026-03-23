@@ -1,157 +1,161 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import {
-  Terminal,
   ArrowLeft,
   Check,
   Loader2,
   MessageCircle,
-  ChevronDown,
-  ChevronUp,
   Zap,
   Shield,
+  Rocket,
+  Star,
+  Crown,
   MemoryStick,
   Cpu,
   HardDrive,
-  Rocket,
-  Star,
   Users,
   Clock,
+  ChevronRight,
 } from 'lucide-react';
 
-// ─── Pricing constants ────────────────────────────────────────────────────────
-const BASE_KOBO = 140000;         // ₦1,400 — 500MB RAM, 0.5 CPU, 1GB storage
+// ─── Plan definitions ─────────────────────────────────────────────────────────
+const PLANS = [
+  {
+    id: 'starter',
+    name: 'Starter',
+    tagline: 'Run a small bot or script',
+    priceKobo: 140000,
+    ram: '500 MB',
+    ramMb: 500,
+    cpu: '0.5 cores',
+    cpuCores: 0.5,
+    storage: '1 GB',
+    storageMb: 1024,
+    icon: Zap,
+    iconColor: 'text-muted-foreground',
+    cardClass: 'border-border',
+    badgeClass: '',
+    badge: '',
+    features: [
+      'Node.js & Python support',
+      'Auto-restart on crash',
+      'Web file manager',
+      'Console & logs',
+      '24/7 uptime monitoring',
+    ],
+  },
+  {
+    id: 'basic',
+    name: 'Basic',
+    tagline: 'Discord bots & simple APIs',
+    priceKobo: 250000,
+    ram: '1 GB',
+    ramMb: 1024,
+    cpu: '1 core',
+    cpuCores: 1,
+    storage: '2 GB',
+    storageMb: 2048,
+    icon: Star,
+    iconColor: 'text-primary',
+    cardClass: 'border-primary/40',
+    badgeClass: 'bg-primary text-primary-foreground',
+    badge: 'Most Popular',
+    features: [
+      'Everything in Starter',
+      'Double the RAM',
+      '2× CPU performance',
+      '2 GB file storage',
+      'Priority activation',
+    ],
+  },
+  {
+    id: 'standard',
+    name: 'Standard',
+    tagline: 'Multi-feature apps & scrapers',
+    priceKobo: 420000,
+    ram: '1.5 GB',
+    ramMb: 1536,
+    cpu: '1.5 cores',
+    cpuCores: 1.5,
+    storage: '3 GB',
+    storageMb: 3072,
+    icon: Rocket,
+    iconColor: 'text-accent',
+    cardClass: 'border-accent/30',
+    badgeClass: 'bg-accent text-white',
+    badge: 'Best Value',
+    features: [
+      'Everything in Basic',
+      '1.5 GB RAM',
+      '1.5× CPU cores',
+      '3 GB file storage',
+      'Higher restart tolerance',
+    ],
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    tagline: 'Heavy workloads & ML scripts',
+    priceKobo: 650000,
+    ram: '2 GB',
+    ramMb: 2048,
+    cpu: '2 cores',
+    cpuCores: 2,
+    storage: '4 GB',
+    storageMb: 4096,
+    icon: Crown,
+    iconColor: 'text-warning',
+    cardClass: 'border-warning/40',
+    badgeClass: 'bg-warning text-black',
+    badge: 'Power User',
+    features: [
+      'Everything in Standard',
+      'Max 2 GB RAM',
+      '2 full CPU cores',
+      '4 GB storage',
+      'Highest restart limit',
+    ],
+  },
+] as const;
 
-// RAM: ₦200 per extra 128MB above 500MB
-const RAM_MIN = 500;
-const RAM_MAX = 2048;
-const RAM_STEP = 128;
-const RAM_EXTRA_PER_SLAB = 20000; // ₦200 per 128MB slab
-
-// CPU: ₦300 per 0.25 core above 0.5
-const CPU_OPTIONS = [0.5, 1, 1.5, 2];
-const CPU_BASE = 0.5;
-const CPU_PRICE_PER_QUARTER = 30000; // ₦300 per 0.25 core
-
-// Storage: ₦500 per extra 512MB above 1GB (max 4GB)
-const STORAGE_MIN = 1024;  // MB
-const STORAGE_MAX = 4096;  // MB
-const STORAGE_STEP = 512;
-const STORAGE_EXTRA_PER_SLAB = 50000; // ₦500 per 512MB slab
-
-function calcTotal(ramMb: number, cpuCores: number, storageMb: number): number {
-  const ramExtra = Math.max(0, Math.floor((ramMb - RAM_MIN) / RAM_STEP)) * RAM_EXTRA_PER_SLAB;
-  const cpuExtra = Math.max(0, Math.round((cpuCores - CPU_BASE) / 0.25)) * CPU_PRICE_PER_QUARTER;
-  const storageExtra = Math.max(0, Math.floor((storageMb - STORAGE_MIN) / STORAGE_STEP)) * STORAGE_EXTRA_PER_SLAB;
-  return BASE_KOBO + ramExtra + cpuExtra + storageExtra;
-}
+type PlanId = typeof PLANS[number]['id'];
 
 function fmt(kobo: number) {
-  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 0 }).format(kobo / 100);
+  return new Intl.NumberFormat('en-NG', {
+    style: 'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 0,
+  }).format(kobo / 100);
 }
 
-function SliderRow({
-  icon,
-  label,
-  value,
-  min,
-  max,
-  step,
-  displayFn,
-  extraPrice,
-  onChange,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  displayFn: (v: number) => string;
-  extraPrice: number;
-  onChange: (v: number) => void;
-}) {
-  const pct = ((value - min) / (max - min)) * 100;
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          {icon}
-          {label}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-mono font-bold text-foreground text-sm">{displayFn(value)}</span>
-          {extraPrice > 0 && (
-            <span className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full font-mono">
-              +{fmt(extraPrice)}/mo
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="relative py-1">
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full h-2 rounded-full appearance-none cursor-pointer"
-          style={{
-            background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${pct}%, hsl(var(--muted)) ${pct}%, hsl(var(--muted)) 100%)`,
-          }}
-        />
-      </div>
-      <div className="flex justify-between text-xs text-muted-foreground font-mono">
-        <span>{displayFn(min)}</span>
-        <span>{displayFn(Math.round((min + max) / 2 / step) * step)}</span>
-        <span>{displayFn(max)}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 const Pricing = () => {
   const { user, loading: authLoading } = useAuth();
-  const [purchasing, setPurchasing] = useState<'basic' | 'advanced' | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [panelName, setPanelName] = useState('');
-  const [stack, setStack] = useState<'nodejs' | 'python'>('nodejs');
-  const [ramMb, setRamMb] = useState(500);
-  const [cpuCores, setCpuCores] = useState(0.5);
-  const [storageMb, setStorageMb] = useState(1024);
+  const [purchasing, setPurchasing] = useState<PlanId | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (!authLoading && !user) navigate('/auth?redirect=/pricing');
-  }, [user, authLoading, navigate]);
+  // No forced redirect — visitors can browse plans, redirect only on purchase
 
   useEffect(() => {
-    const reference = searchParams.get('reference') || searchParams.get('trxref');
-    if (reference) verifyPayment(reference);
+    const ref = searchParams.get('reference') || searchParams.get('trxref');
+    if (ref) verifyPayment(ref);
   }, [searchParams]);
 
-  const advancedTotal = useMemo(() => calcTotal(ramMb, cpuCores, storageMb), [ramMb, cpuCores, storageMb]);
-  const ramExtra = useMemo(() => Math.max(0, Math.floor((ramMb - RAM_MIN) / RAM_STEP)) * RAM_EXTRA_PER_SLAB, [ramMb]);
-  const cpuExtra = useMemo(() => Math.max(0, Math.round((cpuCores - CPU_BASE) / 0.25)) * CPU_PRICE_PER_QUARTER, [cpuCores]);
-  const storageExtra = useMemo(() => Math.max(0, Math.floor((storageMb - STORAGE_MIN) / STORAGE_STEP)) * STORAGE_EXTRA_PER_SLAB, [storageMb]);
-
   const verifyPayment = async (reference: string) => {
-    setPurchasing('basic');
+    setPurchasing('starter');
     try {
-      const { data, error } = await supabase.functions.invoke('paystack', { body: { action: 'verify', reference } });
+      const { data, error } = await supabase.functions.invoke('paystack', {
+        body: { action: 'verify', reference },
+      });
       if (error) throw error;
       if (data.success && data.status === 'success') {
-        toast({ title: 'Payment Successful! 🎉', description: data.message || 'Your panel has been created — check your dashboard!' });
+        toast({ title: 'Payment Successful! 🎉', description: data.message || 'Your panel is ready — check your dashboard!' });
         navigate('/dashboard', { replace: true });
       } else {
         toast({ title: 'Payment Failed', description: data.message || 'Payment was not completed.', variant: 'destructive' });
@@ -164,29 +168,22 @@ const Pricing = () => {
     setPurchasing(null);
   };
 
-  const handlePurchase = async (type: 'basic' | 'advanced') => {
+  const handlePurchase = async (plan: typeof PLANS[number]) => {
     if (!user) { navigate('/auth?redirect=/pricing'); return; }
-    if (type === 'advanced' && !panelName.trim()) {
-      toast({ title: 'Panel name required', description: 'Enter a name for your panel in the Advanced options', variant: 'destructive' });
-      return;
-    }
-    setPurchasing(type);
+    setPurchasing(plan.id);
     try {
-      const amount = type === 'basic' ? BASE_KOBO : advancedTotal;
       const { data, error } = await supabase.functions.invoke('paystack', {
         body: {
           action: 'initialize',
           email: user.email,
-          amount,
+          amount: plan.priceKobo,
           user_id: user.id,
           callback_url: `${window.location.origin}/pricing`,
           panels_count: 1,
           duration_months: 1,
-          panel_name: type === 'advanced' ? panelName.trim() : undefined,
-          panel_language: type === 'advanced' ? stack : undefined,
-          panel_ram_mb: type === 'advanced' ? ramMb : 500,
-          panel_cpu_cores: type === 'advanced' ? cpuCores : 0.5,
-          panel_storage_mb: type === 'advanced' ? storageMb : 1024,
+          panel_ram_mb: plan.ramMb,
+          panel_cpu_cores: plan.cpuCores,
+          panel_storage_mb: plan.storageMb,
         },
       });
       if (error) throw error;
@@ -201,14 +198,6 @@ const Pricing = () => {
     }
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Terminal className="w-12 h-12 text-primary animate-pulse" />
-      </div>
-    );
-  }
-
   if (purchasing && searchParams.get('reference')) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -216,7 +205,7 @@ const Pricing = () => {
           <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-primary animate-spin" />
           </div>
-          <p className="font-mono text-muted-foreground">Verifying your payment...</p>
+          <p className="font-mono text-muted-foreground text-sm">Verifying payment…</p>
         </div>
       </div>
     );
@@ -231,334 +220,172 @@ const Pricing = () => {
             <ArrowLeft className="w-5 h-5" />
           </Button>
         </Link>
-        <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
-          <Terminal className="w-4 h-4 text-primary" />
-        </div>
         <div>
-          <h1 className="font-mono font-bold text-sm text-foreground">Hosting Plans</h1>
-          <p className="text-xs text-muted-foreground font-mono">Secure · Instant · Reliable</p>
+          <h1 className="font-semibold text-sm text-foreground">Choose a Plan</h1>
+          <p className="text-xs text-muted-foreground">Monthly billing · Instant activation · No DevOps</p>
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 pb-24 space-y-6">
+      <main className="max-w-lg mx-auto px-4 pb-24 space-y-5">
 
         {/* Hero */}
-        <div className="pt-6 text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/25 text-primary text-xs font-mono font-semibold">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            Paystack Secured · Instant Activation
-          </div>
-          <h2 className="text-3xl font-bold text-foreground leading-tight">
-            Ship your app <span className="text-primary">today</span>
+        <div className="pt-5 text-center space-y-2">
+          <h2 className="text-2xl font-bold text-foreground">
+            Pick your plan, <span className="text-primary">ship today</span>
           </h2>
-          <p className="text-muted-foreground text-sm max-w-xs mx-auto">
-            Start with the Basic plan or fully customize your server specs. No DevOps needed.
+          <p className="text-sm text-muted-foreground">
+            All plans include auto-restart, file manager, console, and 24/7 uptime.
           </p>
         </div>
 
-        {/* Social proof strip */}
-        <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-primary" />
-            <span>500+ developers</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Star className="w-3.5 h-3.5 text-warning fill-warning" />
-            <span>4.9 / 5 rating</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-primary" />
-            <span>99.9% uptime</span>
-          </div>
+        {/* Social proof */}
+        <div className="flex items-center justify-center gap-5 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-primary" />500+ devs hosted</span>
+          <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-warning fill-warning" />4.9 / 5 rating</span>
+          <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-primary" />99.9% uptime</span>
         </div>
 
-        {/* ── BASIC PLAN CARD ─────────────────────────────────────────────── */}
-        <div className="relative rounded-2xl overflow-hidden border border-primary/30 bg-card shadow-lg">
-          {/* Glow top bar */}
-          <div className="h-1 w-full bg-gradient-to-r from-primary via-primary/60 to-primary/20" />
+        {/* Plan cards */}
+        <div className="space-y-3">
+          {PLANS.map((plan) => {
+            const Icon = plan.icon;
+            const isPopular = plan.badge === 'Most Popular';
+            const isLoading = purchasing === plan.id;
 
-          {/* Popular badge */}
-          <div className="absolute top-4 right-4">
-            <div className="flex items-center gap-1 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow-lg shadow-primary/30">
-              <Zap className="w-3 h-3" />
-              MOST POPULAR
-            </div>
-          </div>
-
-          <div className="p-6 space-y-5">
-            {/* Plan name + price */}
-            <div>
-              <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest mb-1">Basic Plan</p>
-              <div className="flex items-end gap-2">
-                <span className="text-5xl font-bold font-mono text-foreground">₦1,400</span>
-                <span className="text-muted-foreground text-sm mb-1">/month</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">One panel · 1 month · no hidden fees</p>
-            </div>
-
-            {/* Spec chips */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { icon: <MemoryStick className="w-3.5 h-3.5" />, label: '500 MB RAM' },
-                { icon: <Cpu className="w-3.5 h-3.5" />, label: '0.5 CPU' },
-                { icon: <HardDrive className="w-3.5 h-3.5" />, label: '1 GB Storage' },
-              ].map(({ icon, label }) => (
-                <div key={label} className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-muted/40 border border-border">
-                  <span className="text-primary">{icon}</span>
-                  <span className="text-xs font-mono font-semibold text-foreground">{label}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Features */}
-            <ul className="space-y-2">
-              {[
-                'Node.js & Python support',
-                'Auto-restart on crash',
-                'Web file manager & console',
-                '24/7 uptime monitoring',
-                'Instant panel activation',
-                'Telegram support',
-              ].map((f) => (
-                <li key={f} className="flex items-center gap-2.5 text-sm">
-                  <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                    <Check className="w-3 h-3 text-primary" />
-                  </div>
-                  <span className="text-foreground">{f}</span>
-                </li>
-              ))}
-            </ul>
-
-            {/* CTA */}
-            <div className="space-y-3 pt-1">
-              <Button
-                className="w-full h-12 text-base font-bold bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 transition-all hover:shadow-primary/40 hover:scale-[1.01]"
-                onClick={() => handlePurchase('basic')}
-                disabled={!!purchasing}
+            return (
+              <div
+                key={plan.id}
+                className={`relative rounded-2xl border bg-card overflow-hidden transition-all hover:shadow-lg ${
+                  isPopular
+                    ? 'border-primary/50 shadow-md shadow-primary/10'
+                    : plan.cardClass
+                }`}
               >
-                {purchasing === 'basic' ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
-                ) : (
-                  <><Rocket className="w-4 h-4 mr-2" />Get Started — ₦1,400/mo</>
+                {/* Top accent line for popular plan */}
+                {isPopular && (
+                  <div className="h-0.5 w-full bg-gradient-to-r from-primary/20 via-primary to-primary/20" />
                 )}
-              </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                By paying you agree to our{' '}
-                <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
-                {' '}· No Refunds
-              </p>
-            </div>
+
+                <div className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    {/* Left: icon + name */}
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        isPopular ? 'bg-primary/15 border border-primary/25' :
+                        plan.id === 'standard' ? 'bg-accent/15 border border-accent/20' :
+                        plan.id === 'pro' ? 'bg-warning/15 border border-warning/20' :
+                        'bg-muted/50 border border-border'
+                      }`}>
+                        <Icon className={`w-5 h-5 ${plan.iconColor}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-foreground">{plan.name}</p>
+                          {plan.badge && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${plan.badgeClass}`}>
+                              {plan.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{plan.tagline}</p>
+                      </div>
+                    </div>
+
+                    {/* Right: price */}
+                    <div className="text-right shrink-0 ml-2">
+                      <p className="text-2xl font-bold font-mono text-foreground">{fmt(plan.priceKobo)}</p>
+                      <p className="text-xs text-muted-foreground">/month</p>
+                    </div>
+                  </div>
+
+                  {/* Spec chips */}
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="flex items-center gap-1.5 text-xs bg-muted/40 border border-border rounded-lg px-2.5 py-2">
+                      <MemoryStick className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="font-mono font-semibold text-foreground">{plan.ram}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs bg-muted/40 border border-border rounded-lg px-2.5 py-2">
+                      <Cpu className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="font-mono font-semibold text-foreground">{plan.cpu}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs bg-muted/40 border border-border rounded-lg px-2.5 py-2">
+                      <HardDrive className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span className="font-mono font-semibold text-foreground">{plan.storage}</span>
+                    </div>
+                  </div>
+
+                  {/* Features */}
+                  <ul className="space-y-1.5 mb-5">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-center gap-2 text-sm">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                          isPopular ? 'bg-primary/20' : 'bg-muted/60'
+                        }`}>
+                          <Check className={`w-2.5 h-2.5 ${isPopular ? 'text-primary' : 'text-muted-foreground'}`} />
+                        </div>
+                        <span className="text-muted-foreground">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* CTA */}
+                  <Button
+                    className={`w-full h-11 font-semibold gap-2 transition-all hover:scale-[1.01] ${
+                      isPopular
+                        ? 'bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20'
+                        : plan.id === 'pro'
+                        ? 'bg-warning hover:bg-warning/90 text-black shadow-lg shadow-warning/20'
+                        : plan.id === 'standard'
+                        ? 'bg-accent hover:bg-accent/90 shadow-lg shadow-accent/20'
+                        : 'bg-card border border-border hover:bg-muted/40 text-foreground'
+                    }`}
+                    onClick={() => handlePurchase(plan)}
+                    disabled={!!purchasing}
+                  >
+                    {isLoading ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" />Processing…</>
+                    ) : (
+                      <>
+                        Get {plan.name}
+                        <ChevronRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Comparison footnote */}
+        <div className="rounded-2xl border border-border bg-card/40 p-4 text-center space-y-2">
+          <p className="text-xs font-semibold text-foreground">All plans include:</p>
+          <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground">
+            {[
+              { icon: Shield, text: 'Auto-restart on crash' },
+              { icon: Zap, text: 'Instant activation' },
+              { icon: Clock, text: '24/7 monitoring' },
+            ].map(({ icon: I, text }) => (
+              <span key={text} className="flex items-center gap-1.5">
+                <I className="w-3.5 h-3.5 text-primary" />
+                {text}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground font-mono">OR CUSTOMIZE</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        {/* ── ADVANCED OPTIONS CARD ────────────────────────────────────────── */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          {/* Toggle header */}
-          <button
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/20 transition-colors group"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center">
-                <Cpu className="w-5 h-5 text-accent" />
-              </div>
-              <div className="text-left">
-                <p className="font-semibold text-foreground text-sm">Build Your Own Plan</p>
-                <p className="text-xs text-muted-foreground">Set name, stack, RAM, CPU & storage</p>
-              </div>
-            </div>
-            <div className={`w-8 h-8 rounded-full border border-border flex items-center justify-center transition-colors ${showAdvanced ? 'bg-primary/10 border-primary/30' : 'group-hover:border-accent/30'}`}>
-              {showAdvanced
-                ? <ChevronUp className="w-4 h-4 text-primary" />
-                : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-            </div>
-          </button>
-
-          {showAdvanced && (
-            <div className="border-t border-border">
-              {/* Live price bar */}
-              <div className="px-5 py-3 bg-primary/5 border-b border-primary/15 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  Live price preview
-                </div>
-                <div className="flex items-center gap-3">
-                  {[
-                    ramExtra > 0 && `RAM +${fmt(ramExtra)}`,
-                    cpuExtra > 0 && `CPU +${fmt(cpuExtra)}`,
-                    storageExtra > 0 && `Storage +${fmt(storageExtra)}`,
-                  ].filter(Boolean).map((label) => (
-                    <span key={String(label)} className="text-xs text-muted-foreground font-mono">{label}</span>
-                  ))}
-                  <span className="text-xl font-bold font-mono text-primary">{fmt(advancedTotal)}</span>
-                  <span className="text-xs text-muted-foreground">/mo</span>
-                </div>
-              </div>
-
-              <div className="px-5 py-5 space-y-7">
-                {/* Panel name */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Panel Name *</Label>
-                  <Input
-                    placeholder="e.g. my-discord-bot"
-                    value={panelName}
-                    onChange={(e) => setPanelName(e.target.value)}
-                    className="font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">This will be the identifier for your panel.</p>
-                </div>
-
-                {/* Stack */}
-                <div className="space-y-3">
-                  <Label className="text-xs font-mono uppercase tracking-wide text-muted-foreground">Runtime</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {([
-                      { key: 'nodejs', code: 'JS', label: 'Node.js', color: 'nodejs' },
-                      { key: 'python', code: 'PY', label: 'Python', color: 'python' },
-                    ] as const).map(({ key, code, label, color }) => (
-                      <button
-                        key={key}
-                        onClick={() => setStack(key)}
-                        className={`relative p-4 rounded-xl border-2 transition-all text-left ${
-                          stack === key
-                            ? `border-${color} bg-${color}/10`
-                            : `border-border hover:border-${color}/40`
-                        }`}
-                      >
-                        {stack === key && (
-                          <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                            <Check className="w-2.5 h-2.5 text-primary-foreground" />
-                          </div>
-                        )}
-                        <span className={`font-mono font-black text-3xl block text-${color}`}>{code}</span>
-                        <p className="text-sm text-muted-foreground mt-1">{label}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* RAM Slider */}
-                <SliderRow
-                  icon={<MemoryStick className="w-4 h-4 text-primary" />}
-                  label="RAM"
-                  value={ramMb}
-                  min={RAM_MIN}
-                  max={RAM_MAX}
-                  step={RAM_STEP}
-                  displayFn={(v) => v >= 1024 ? `${(v / 1024).toFixed(1)} GB` : `${v} MB`}
-                  extraPrice={ramExtra}
-                  onChange={setRamMb}
-                />
-
-                {/* CPU Selector */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      <Cpu className="w-4 h-4 text-primary" />
-                      CPU Cores
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-foreground text-sm">{cpuCores} core{cpuCores !== 1 ? 's' : ''}</span>
-                      {cpuExtra > 0 && (
-                        <span className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full font-mono">
-                          +{fmt(cpuExtra)}/mo
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2">
-                    {CPU_OPTIONS.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => setCpuCores(c)}
-                        className={`py-2.5 rounded-xl border-2 text-sm font-mono font-semibold transition-all ${
-                          cpuCores === c
-                            ? 'border-primary bg-primary/10 text-primary shadow-inner'
-                            : 'border-border text-muted-foreground hover:border-primary/40'
-                        }`}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Higher cores = more parallel processing power.</p>
-                </div>
-
-                {/* Storage Slider */}
-                <SliderRow
-                  icon={<HardDrive className="w-4 h-4 text-primary" />}
-                  label="Storage"
-                  value={storageMb}
-                  min={STORAGE_MIN}
-                  max={STORAGE_MAX}
-                  step={STORAGE_STEP}
-                  displayFn={(v) => `${(v / 1024).toFixed(1)} GB`}
-                  extraPrice={storageExtra}
-                  onChange={setStorageMb}
-                />
-
-                {/* Price breakdown */}
-                <div className="rounded-xl bg-muted/30 border border-border divide-y divide-border overflow-hidden">
-                  {[
-                    { label: 'Base plan (500 MB, 0.5 CPU, 1 GB)', value: BASE_KOBO },
-                    ...(ramExtra > 0 ? [{ label: `RAM upgrade (+${ramMb - 500} MB)`, value: ramExtra }] : []),
-                    ...(cpuExtra > 0 ? [{ label: `CPU upgrade (+${cpuCores - CPU_BASE} core${cpuCores - CPU_BASE !== 1 ? 's' : ''})`, value: cpuExtra }] : []),
-                    ...(storageExtra > 0 ? [{ label: `Storage upgrade (+${((storageMb - STORAGE_MIN) / 1024).toFixed(1)} GB)`, value: storageExtra }] : []),
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex justify-between items-center px-4 py-2.5 text-sm">
-                      <span className="text-muted-foreground">{label}</span>
-                      <span className="font-mono font-semibold text-foreground">{fmt(value)}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between items-center px-4 py-3 bg-primary/5">
-                    <span className="font-semibold text-foreground">Total / month</span>
-                    <span className="font-mono font-bold text-primary text-lg">{fmt(advancedTotal)}</span>
-                  </div>
-                </div>
-
-                {/* Advanced Buy Button */}
-                <Button
-                  className="w-full h-12 text-base font-bold bg-accent hover:bg-accent/90 shadow-lg shadow-accent/20 transition-all hover:shadow-accent/35 hover:scale-[1.01]"
-                  onClick={() => handlePurchase('advanced')}
-                  disabled={!!purchasing || !panelName.trim()}
-                >
-                  {purchasing === 'advanced' ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
-                  ) : (
-                    <><Zap className="w-4 h-4 mr-2" />Buy Custom Plan — {fmt(advancedTotal)}/mo</>
-                  )}
-                </Button>
-                {!panelName.trim() && (
-                  <p className="text-xs text-center text-warning">Enter a panel name above to enable purchase</p>
-                )}
-                <p className="text-center text-xs text-muted-foreground">
-                  By paying you agree to our{' '}
-                  <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
-                  {' '}· No Refunds
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Trust row */}
-        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground py-2">
-          <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-success" />Secure via Paystack</span>
-          <span className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-primary" />Instant activation</span>
-          <span className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-success" />No hidden fees</span>
-        </div>
+        {/* ToS note */}
+        <p className="text-xs text-center text-muted-foreground">
+          By purchasing you agree to our{' '}
+          <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
+          {' '}·{' '}
+          <span className="text-warning font-medium">All sales are final · No refunds</span>
+        </p>
 
         <p className="text-center text-sm text-muted-foreground pb-2">
-          Questions?{' '}
+          Not sure which to pick?{' '}
           <a href="https://t.me/theidledeveloper" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-            Chat on Telegram
+            Ask on Telegram
           </a>
         </p>
       </main>
@@ -569,7 +396,6 @@ const Pricing = () => {
         target="_blank"
         rel="noopener noreferrer"
         className="fixed bottom-6 right-6 w-14 h-14 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition-all z-50"
-        title="Contact Support"
       >
         <MessageCircle className="w-6 h-6" />
       </a>
