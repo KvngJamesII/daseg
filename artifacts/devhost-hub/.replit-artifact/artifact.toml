@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "iDevHost - VPS Hosting Platform"
+version = "1.0.0"
+id = "artifacts/devhost-hub"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18996
+
+[services.development]
+run = "pnpm --filter @workspace/devhost-hub run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/devhost-hub", "run", "build" ]
+publicDir = "artifacts/devhost-hub/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18996"
+BASE_PATH = "/"

@@ -2,7 +2,28 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+pnpm workspace monorepo using TypeScript. This is the **iDevHost** VPS hosting platform — a service where users can deploy Node.js and Python applications, managed via a panel interface that talks to a DigitalOcean VM backend via Supabase edge functions.
+
+## Application Architecture
+
+- **Frontend**: React + Vite + Tailwind CSS v4 (`artifacts/devhost-hub`) — dark terminal-themed UI
+- **Auth/DB**: Supabase (hosted) — auth, panels, plans, redeem codes
+- **VM Backend**: Node.js backends deployed on DigitalOcean (`vm-backend/`, `vm-backend-premium/`) — handles container/PM2 process management via Supabase edge function proxy
+- **Edge Functions**: Supabase edge functions (`supabase/functions/`) — `paystack` (payments), `vm-proxy` (VM communication)
+- **Payment**: Paystack (Nigerian payment gateway)
+
+## Key Env Variables
+- `VITE_SUPABASE_URL` — Supabase project URL
+- `VITE_SUPABASE_PUBLISHABLE_KEY` — Supabase anon key (safe for frontend)
+
+## Pages
+- `/` — Landing page (Index)
+- `/auth` — Login / Sign up
+- `/dashboard` — User dashboard (panels list, redeem codes, buy panels)
+- `/panel/:id` — Individual panel management (console, file manager, startup, settings)
+- `/pricing` — Buy panels via Paystack
+- `/renew/:id` — Renew panel
+- `/admin` — Admin panel
 
 ## Stack
 

@@ -1,0 +1,1145 @@
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import { RedeemCodeDialog } from '@/components/admin/RedeemCodeDialog';
+import { AnalyticsOverview } from '@/components/admin/AnalyticsOverview';
+import { RevenueChart } from '@/components/admin/RevenueChart';
+import { UserGrowthChart } from '@/components/admin/UserGrowthChart';
+import { PanelStatusChart } from '@/components/admin/PanelStatusChart';
+import { TransactionsTable } from '@/components/admin/TransactionsTable';
+import { PlanPerformance } from '@/components/admin/PlanPerformance';
+import {
+  ArrowLeft,
+  Users,
+  Crown,
+  Server,
+  Loader2,
+  Check,
+  X,
+  Ban,
+  Shield,
+  Search,
+  Gift,
+  Activity,
+  TrendingUp,
+  Terminal,
+  Copy,
+  Trash2,
+  Eye,
+  MoreVertical,
+  Plus,
+  Calendar,
+  Settings,
+  DollarSign,
+  BarChart3,
+} from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
+interface User {
+  id: string;
+  email: string;
+  username: string | null;
+  premium_status: 'none' | 'pending' | 'approved' | 'rejected';
+  is_banned: boolean;
+  ban_reason: string | null;
+  created_at: string;
+  panels_limit: number;
+}
+
+interface PremiumRequest {
+  id: string;
+  user_id: string;
+  message: string | null;
+  status: string;
+  created_at: string;
+  profiles?: {
+    email: string;
+    username: string | null;
+  };
+}
+
+interface RedeemCode {
+  id: string;
+  code: string;
+  max_uses: number | null;
+  current_uses: number;
+  panels_granted: number;
+  created_at: string;
+  is_active: boolean;
+}
+
+interface UserPanel {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  created_at: string;
+  expires_at: string | null;
+}
+
+interface ManagedPanel {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  expires_at: string | null;
+  user_id: string;
+  created_at: string;
+  user_email?: string;
+}
+
+interface AllPanel {
+  id: string;
+  status: string;
+  language: string;
+  created_at: string;
+}
+
+interface Transaction {
+  id: string;
+  user_id: string;
+  plan_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  paystack_reference: string | null;
+  created_at: string;
+  user_email?: string;
+  plan_name?: string;
+}
+
+interface Plan {
+  id: string;
+  name: string;
+  price: number;
+  panels_count: number;
+  duration_days: number;
+  description: string | null;
+  is_popular: boolean;
+  is_active: boolean;
+}
+
+interface Stats {
+  totalUsers: number;
+  premiumUsers: number;
+  pendingRequests: number;
+  totalPanels: number;
+  runningPanels: number;
+  bannedUsers: number;
+  activeCodesCount: number;
+  totalRedemptions: number;
+  totalRevenue: number;
+  transactionsCount: number;
+}
+
+const Admin = () => {
+  const { user, isAdmin, loading: authLoading } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [requests, setRequests] = useState<PremiumRequest[]>([]);
+  const [redeemCodes, setRedeemCodes] = useState<RedeemCode[]>([]);
+  const [stats, setStats] = useState<Stats>({
+    totalUsers: 0,
+    premiumUsers: 0,
+    pendingRequests: 0,
+    totalPanels: 0,
+    runningPanels: 0,
+    bannedUsers: 0,
+    activeCodesCount: 0,
+    totalRedemptions: 0,
+    totalRevenue: 0,
+    transactionsCount: 0,
+  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [allPanels, setAllPanels] = useState<AllPanel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [actionUser, setActionUser] = useState<User | null>(null);
+  const [actionType, setActionType] = useState<'ban' | 'unban' | null>(null);
+  const [showRedeemDialog, setShowRedeemDialog] = useState(false);
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [userPanels, setUserPanels] = useState<UserPanel[]>([]);
+  const [loadingPanels, setLoadingPanels] = useState(false);
+  const [addPanelsUser, setAddPanelsUser] = useState<User | null>(null);
+  const [panelsToAdd, setPanelsToAdd] = useState('1');
+  const [panelIdSearch, setPanelIdSearch] = useState('');
+  const [searchingPanel, setSearchingPanel] = useState(false);
+  const [managedPanel, setManagedPanel] = useState<ManagedPanel | null>(null);
+  const [extendDuration, setExtendDuration] = useState('720'); // hours
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        navigate('/auth');
+      } else if (!isAdmin) {
+        navigate('/dashboard');
+      }
+    }
+  }, [user, isAdmin, authLoading, navigate]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchData();
+    }
+  }, [isAdmin]);
+
+  const fetchData = async () => {
+    // Fetch users
+    const { data: usersData } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (usersData) {
+      setUsers(usersData as User[]);
+    }
+
+    // Fetch pending requests
+    const { data: requestsData } = await supabase
+      .from('premium_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (requestsData) {
+      const requestsWithProfiles = await Promise.all(
+        requestsData.map(async (req) => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('email, username')
+            .eq('id', req.user_id)
+            .single();
+          return { ...req, profiles: profile };
+        })
+      );
+      setRequests(requestsWithProfiles as PremiumRequest[]);
+    }
+
+    // Fetch redeem codes
+    const { data: codesData } = await supabase
+      .from('redeem_codes')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (codesData) {
+      setRedeemCodes(codesData as RedeemCode[]);
+    }
+
+    // Fetch transactions
+    const { data: txData } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (txData) {
+      // Enrich with user emails and plan names
+      const enrichedTx = await Promise.all(
+        (txData as Transaction[]).map(async (tx) => {
+          const [profileRes, planRes] = await Promise.all([
+            supabase.from('profiles').select('email').eq('id', tx.user_id).maybeSingle(),
+            tx.plan_id ? supabase.from('plans').select('name').eq('id', tx.plan_id).maybeSingle() : Promise.resolve({ data: null }),
+          ]);
+          return {
+            ...tx,
+            user_email: profileRes.data?.email,
+            plan_name: planRes.data?.name,
+          };
+        })
+      );
+      setTransactions(enrichedTx);
+    }
+
+    // Fetch stats
+    const { count: totalUsers } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+    const { count: premiumUsers } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('premium_status', 'approved');
+    const { count: pendingRequests } = await supabase.from('premium_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+    const { count: totalPanels } = await supabase.from('panels').select('*', { count: 'exact', head: true });
+    const { count: runningPanels } = await supabase.from('panels').select('*', { count: 'exact', head: true }).eq('status', 'running');
+    const { count: bannedUsers } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true);
+    const { count: activeCodesCount } = await supabase.from('redeem_codes').select('*', { count: 'exact', head: true }).eq('is_active', true);
+    const { count: totalRedemptions } = await supabase.from('code_redemptions').select('*', { count: 'exact', head: true });
+    const { count: transactionsCount } = await supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('status', 'success');
+
+    // Calculate total revenue
+    const { data: successfulTx } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('status', 'success');
+    
+    const totalRevenue = (successfulTx || []).reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    setStats({
+      totalUsers: totalUsers || 0,
+      premiumUsers: premiumUsers || 0,
+      pendingRequests: pendingRequests || 0,
+      totalPanels: totalPanels || 0,
+      runningPanels: runningPanels || 0,
+      bannedUsers: bannedUsers || 0,
+      activeCodesCount: activeCodesCount || 0,
+      totalRedemptions: totalRedemptions || 0,
+      totalRevenue,
+      transactionsCount: transactionsCount || 0,
+    });
+
+    // Fetch plans
+    const { data: plansData } = await supabase
+      .from('plans')
+      .select('*')
+      .order('sort_order', { ascending: true });
+
+    if (plansData) {
+      setPlans(plansData as Plan[]);
+    }
+
+    // Fetch all panels for analytics
+    const { data: panelsData } = await supabase
+      .from('panels')
+      .select('id, status, language, created_at');
+
+    if (panelsData) {
+      setAllPanels(panelsData as AllPanel[]);
+    }
+
+    setLoading(false);
+  };
+
+  const handleApproveRequest = async (request: PremiumRequest) => {
+    await supabase
+      .from('premium_requests')
+      .update({ status: 'approved', reviewed_by: user?.id, reviewed_at: new Date().toISOString() })
+      .eq('id', request.id);
+
+    await supabase.from('profiles').update({ premium_status: 'approved', panels_limit: 5 }).eq('id', request.user_id);
+
+    toast({ title: 'Approved', description: 'Premium access granted with 5 panel slots' });
+    fetchData();
+  };
+
+  const handleRejectRequest = async (request: PremiumRequest) => {
+    await supabase
+      .from('premium_requests')
+      .update({ status: 'rejected', reviewed_by: user?.id, reviewed_at: new Date().toISOString() })
+      .eq('id', request.id);
+
+    await supabase.from('profiles').update({ premium_status: 'rejected' }).eq('id', request.user_id);
+
+    toast({ title: 'Rejected', description: 'Premium request rejected' });
+    fetchData();
+  };
+
+  const handleTogglePremium = async (targetUser: User) => {
+    const newStatus = targetUser.premium_status === 'approved' ? 'none' : 'approved';
+    const newLimit = newStatus === 'approved' ? 5 : 0;
+    await supabase.from('profiles').update({ premium_status: newStatus, panels_limit: newLimit }).eq('id', targetUser.id);
+
+    toast({
+      title: newStatus === 'approved' ? 'Premium Granted' : 'Premium Revoked',
+      description: `Premium status updated for ${targetUser.email}`,
+    });
+    fetchData();
+  };
+
+  const handleBanUser = async () => {
+    if (!actionUser) return;
+
+    const isBanning = actionType === 'ban';
+    
+    // Update profile
+    await supabase
+      .from('profiles')
+      .update({ is_banned: isBanning, ban_reason: isBanning ? 'Banned by admin' : null })
+      .eq('id', actionUser.id);
+
+    // If banning, stop all user panels
+    if (isBanning) {
+      await supabase
+        .from('panels')
+        .update({ status: 'stopped' })
+        .eq('user_id', actionUser.id);
+    }
+
+    toast({
+      title: isBanning ? 'User Banned' : 'User Unbanned',
+      description: isBanning 
+        ? `${actionUser.email} has been banned and all their panels stopped`
+        : `${actionUser.email} has been unbanned`,
+    });
+
+    setActionUser(null);
+    setActionType(null);
+    fetchData();
+  };
+
+  const handleViewUser = async (targetUser: User) => {
+    setViewingUser(targetUser);
+    setLoadingPanels(true);
+    
+    const { data: panels } = await supabase
+      .from('panels')
+      .select('*')
+      .eq('user_id', targetUser.id)
+      .order('created_at', { ascending: false });
+    
+    setUserPanels((panels || []) as UserPanel[]);
+    setLoadingPanels(false);
+  };
+
+  const handleAddPanels = async () => {
+    if (!addPanelsUser) return;
+    
+    const numPanels = parseInt(panelsToAdd) || 0;
+    if (numPanels <= 0) {
+      toast({ title: 'Error', description: 'Please enter a valid number', variant: 'destructive' });
+      return;
+    }
+
+    const newLimit = (addPanelsUser.panels_limit || 0) + numPanels;
+    
+    const { error } = await supabase
+      .from('profiles')
+      .update({ panels_limit: newLimit })
+      .eq('id', addPanelsUser.id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to update panel limit', variant: 'destructive' });
+    } else {
+      toast({ 
+        title: 'Panels Added', 
+        description: `Added ${numPanels} panel slot${numPanels > 1 ? 's' : ''} to ${addPanelsUser.email}. New limit: ${newLimit}` 
+      });
+      fetchData();
+    }
+
+    setAddPanelsUser(null);
+    setPanelsToAdd('1');
+  };
+
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast({ title: 'Copied!', description: 'Code copied to clipboard' });
+  };
+
+  const handleDeleteCode = async (codeId: string) => {
+    await supabase.from('redeem_codes').delete().eq('id', codeId);
+    toast({ title: 'Deleted', description: 'Redeem code deleted' });
+    fetchData();
+  };
+
+  const handleToggleCodeActive = async (code: RedeemCode) => {
+    await supabase.from('redeem_codes').update({ is_active: !code.is_active }).eq('id', code.id);
+    toast({ title: code.is_active ? 'Deactivated' : 'Activated' });
+    fetchData();
+  };
+
+  const handleSearchPanel = async () => {
+    if (!panelIdSearch.trim()) return;
+    setSearchingPanel(true);
+
+    const { data: panel, error } = await supabase
+      .from('panels')
+      .select('*')
+      .eq('id', panelIdSearch.trim())
+      .maybeSingle();
+
+    if (error || !panel) {
+      toast({ title: 'Not Found', description: 'No panel found with that ID', variant: 'destructive' });
+      setSearchingPanel(false);
+      return;
+    }
+
+    // Get user email
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', panel.user_id)
+      .maybeSingle();
+
+    setManagedPanel({
+      ...panel,
+      user_email: profile?.email,
+    } as ManagedPanel);
+    setSearchingPanel(false);
+  };
+
+  const handleExtendPanel = async () => {
+    if (!managedPanel) return;
+
+    const hours = parseInt(extendDuration) || 720;
+    const currentExpiry = managedPanel.expires_at ? new Date(managedPanel.expires_at) : new Date();
+    const newExpiry = new Date(Math.max(currentExpiry.getTime(), Date.now()));
+    newExpiry.setHours(newExpiry.getHours() + hours);
+
+    const { error } = await supabase
+      .from('panels')
+      .update({ expires_at: newExpiry.toISOString() })
+      .eq('id', managedPanel.id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to extend panel', variant: 'destructive' });
+    } else {
+      toast({ title: 'Extended!', description: `Panel expires: ${newExpiry.toLocaleDateString()}` });
+      setManagedPanel({ ...managedPanel, expires_at: newExpiry.toISOString() });
+    }
+  };
+
+  const handleDeletePanel = async () => {
+    if (!managedPanel) return;
+
+    const { error } = await supabase
+      .from('panels')
+      .delete()
+      .eq('id', managedPanel.id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to delete panel', variant: 'destructive' });
+    } else {
+      toast({ title: 'Deleted', description: 'Panel deleted successfully' });
+      setManagedPanel(null);
+      setPanelIdSearch('');
+      fetchData();
+    }
+  };
+
+  const handleStopPanel = async () => {
+    if (!managedPanel) return;
+
+    const { error } = await supabase
+      .from('panels')
+      .update({ status: 'stopped' })
+      .eq('id', managedPanel.id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to stop panel', variant: 'destructive' });
+    } else {
+      toast({ title: 'Stopped', description: 'Panel stopped successfully' });
+      setManagedPanel({ ...managedPanel, status: 'stopped' });
+    }
+  };
+
+  const filteredUsers = users.filter(
+    (u) =>
+      u.email.toLowerCase().includes(search.toLowerCase()) ||
+      u.username?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Terminal className="w-12 h-12 mx-auto text-primary animate-pulse mb-4" />
+          <p className="text-muted-foreground font-mono text-sm">Loading admin panel...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-border">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Link to="/dashboard">
+                <Button variant="ghost" size="icon" className="h-9 w-9">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="font-mono font-bold text-lg text-foreground">Admin Panel</h1>
+                <p className="text-xs text-muted-foreground font-mono">
+                  <span className="text-success">●</span> System Management
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setShowRedeemDialog(true)}
+              className="font-mono bg-primary hover:bg-primary/90"
+            >
+              <Gift className="w-4 h-4 mr-1" />
+              Generate Code
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-4 pb-24 space-y-6">
+        {/* Analytics Overview */}
+        <AnalyticsOverview stats={stats} />
+
+        {/* Tabs */}
+        <Tabs defaultValue="analytics" className="space-y-4">
+          <TabsList className="w-full grid grid-cols-6 h-auto">
+            <TabsTrigger value="analytics" className="font-mono text-xs py-2">
+              <BarChart3 className="w-3 h-3 mr-1 hidden sm:inline" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="requests" className="font-mono text-xs py-2 relative">
+              Requests
+              {requests.length > 0 && (
+                <Badge className="ml-1 bg-warning text-warning-foreground h-5 min-w-5 px-1">{requests.length}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="users" className="font-mono text-xs py-2">Users</TabsTrigger>
+            <TabsTrigger value="panels" className="font-mono text-xs py-2">Panels</TabsTrigger>
+            <TabsTrigger value="codes" className="font-mono text-xs py-2">Codes</TabsTrigger>
+            <TabsTrigger value="finance" className="font-mono text-xs py-2">Finance</TabsTrigger>
+          </TabsList>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <RevenueChart transactions={transactions} />
+              <UserGrowthChart users={users} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <PanelStatusChart panels={allPanels} />
+              <PlanPerformance transactions={transactions} plans={plans} />
+            </div>
+          </TabsContent>
+
+          {/* Requests Tab */}
+          <TabsContent value="requests" className="space-y-3">
+            {requests.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-mono">No pending requests</p>
+                </CardContent>
+              </Card>
+            ) : (
+              requests.map((request) => (
+                <Card key={request.id} className="border-warning/30 bg-warning/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Crown className="w-4 h-4 text-warning" />
+                          <p className="font-mono font-medium text-foreground truncate">
+                            {request.profiles?.username || request.profiles?.email?.split('@')[0]}
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate">{request.profiles?.email}</p>
+                        {request.message && (
+                          <p className="text-sm mt-2 p-2 bg-muted rounded-lg text-foreground">{request.message}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-2 font-mono">
+                          {new Date(request.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-10 w-10 border-destructive/30 hover:bg-destructive/10"
+                          onClick={() => handleRejectRequest(request)}
+                        >
+                          <X className="w-4 h-4 text-destructive" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          className="h-10 w-10 bg-success hover:bg-success/90"
+                          onClick={() => handleApproveRequest(request)}
+                        >
+                          <Check className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+
+          {/* Users Tab */}
+          <TabsContent value="users" className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 font-mono"
+              />
+            </div>
+
+            <div className="space-y-2">
+              {filteredUsers.map((u) => (
+                <Card key={u.id} className={u.is_banned ? 'border-destructive/50 bg-destructive/5' : 'border-border'}>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-mono font-medium text-foreground truncate">{u.username || u.email.split('@')[0]}</p>
+                          {u.is_banned && <Badge variant="destructive" className="text-xs">Banned</Badge>}
+                          {u.premium_status === 'approved' && (
+                            <Badge className="bg-warning/20 text-warning border-warning/30 text-xs">
+                              <Crown className="w-3 h-3 mr-1" />
+                              PRO
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                        <p className="text-xs text-muted-foreground font-mono mt-1">
+                          Panels: {u.panels_limit || 0} slots
+                        </p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleViewUser(u)}>
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Panels
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTogglePremium(u)}>
+                            <Crown className="w-4 h-4 mr-2" />
+                            {u.premium_status === 'approved' ? 'Revoke Premium' : 'Grant Premium'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setAddPanelsUser(u);
+                            setPanelsToAdd('1');
+                          }}>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Panels
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setActionUser(u);
+                              setActionType(u.is_banned ? 'unban' : 'ban');
+                            }}
+                            className={u.is_banned ? '' : 'text-destructive'}
+                          >
+                            <Ban className="w-4 h-4 mr-2" />
+                            {u.is_banned ? 'Unban User' : 'Ban User'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* Panels Tab */}
+          <TabsContent value="panels" className="space-y-4">
+            <Card className="border-primary/30">
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-primary" />
+                  <p className="font-mono font-medium text-foreground">Manage Panel by ID</p>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter panel ID (UUID)"
+                    value={panelIdSearch}
+                    onChange={(e) => setPanelIdSearch(e.target.value)}
+                    className="font-mono text-sm"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchPanel()}
+                  />
+                  <Button onClick={handleSearchPanel} disabled={searchingPanel}>
+                    {searchingPanel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  </Button>
+                </div>
+
+                {managedPanel && (
+                  <div className="mt-4 p-4 bg-muted/30 rounded-lg space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-mono font-bold text-foreground">{managedPanel.name}</p>
+                        <p className="text-sm text-muted-foreground">Owner: {managedPanel.user_email}</p>
+                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                          <Badge variant={managedPanel.status === 'running' ? 'default' : 'secondary'}>
+                            {managedPanel.status}
+                          </Badge>
+                          <span>•</span>
+                          <span>{managedPanel.language}</span>
+                          <span>•</span>
+                          <span>ID: {managedPanel.id.slice(0, 8)}...</span>
+                        </div>
+                        {managedPanel.expires_at && (
+                          <div className="flex items-center gap-1 mt-2 text-xs">
+                            <Calendar className="w-3 h-3" />
+                            <span className={new Date(managedPanel.expires_at) < new Date() ? 'text-destructive' : 'text-muted-foreground'}>
+                              Expires: {new Date(managedPanel.expires_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-3 pt-3 border-t border-border">
+                      <div>
+                        <label className="text-sm font-medium text-foreground">Extend Duration</label>
+                        <div className="flex gap-2 mt-2">
+                          <select
+                            value={extendDuration}
+                            onChange={(e) => setExtendDuration(e.target.value)}
+                            className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                          >
+                            <option value="2">2 hours</option>
+                            <option value="24">1 day</option>
+                            <option value="168">1 week</option>
+                            <option value="720">1 month</option>
+                            <option value="1440">2 months</option>
+                            <option value="2160">3 months</option>
+                            <option value="4320">6 months</option>
+                            <option value="8760">1 year</option>
+                          </select>
+                          <Button onClick={handleExtendPanel} className="bg-success hover:bg-success/90">
+                            <Calendar className="w-4 h-4 mr-1" />
+                            Extend
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        {managedPanel.status === 'running' && (
+                          <Button variant="outline" onClick={handleStopPanel} className="flex-1">
+                            <X className="w-4 h-4 mr-1" />
+                            Stop Panel
+                          </Button>
+                        )}
+                        <Button variant="destructive" onClick={handleDeletePanel} className="flex-1">
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete Panel
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Codes Tab */}
+          <TabsContent value="codes" className="space-y-3">
+            {redeemCodes.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <Gift className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-mono">No redeem codes yet</p>
+                  <Button
+                    className="mt-4"
+                    onClick={() => setShowRedeemDialog(true)}
+                  >
+                    Generate First Code
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              redeemCodes.map((code) => (
+                <Card key={code.id} className={code.is_active ? 'border-primary/30' : 'border-muted opacity-60'}>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-mono font-bold text-primary">{code.code}</p>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => handleCopyCode(code.code)}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          <span>Uses: {code.current_uses}/{code.max_uses || '∞'}</span>
+                          <span>•</span>
+                          <span>Panels: {code.panels_granted}</span>
+                          <span>•</span>
+                          <Badge variant={code.is_active ? 'default' : 'secondary'} className="text-xs">
+                            {code.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleToggleCodeActive(code)}>
+                            {code.is_active ? 'Deactivate' : 'Activate'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteCode(code.id)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+
+          {/* Finance Tab */}
+          <TabsContent value="finance" className="space-y-4">
+            {/* Revenue Summary */}
+            <div className="grid grid-cols-2 gap-3">
+              <Card className="bg-success/10 border-success/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-success/20 flex items-center justify-center">
+                      <DollarSign className="w-6 h-6 text-success" />
+                    </div>
+                    <div>
+                      <p className="text-3xl font-mono font-bold text-success">
+                        ₦{(stats.totalRevenue / 100).toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">Total Revenue</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-primary/10 border-primary/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center">
+                      <TrendingUp className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-3xl font-mono font-bold text-primary">
+                        {stats.transactionsCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">Successful Txns</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <RevenueChart transactions={transactions} />
+              <PlanPerformance transactions={transactions} plans={plans} />
+            </div>
+
+            {/* Transactions Table */}
+            <TransactionsTable transactions={transactions} />
+
+            {/* Panel Pricing Settings */}
+            <Card className="border-primary/30">
+              <CardContent className="p-4">
+                <h3 className="font-mono font-bold mb-4 flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-primary" />
+                  Panel Pricing
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Set the price per panel per month. Users will pay this amount multiplied by their chosen quantity and duration.
+                </p>
+                {plans.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                      <label className="text-sm font-medium text-foreground">Price per Panel per Month (Kobo)</label>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          type="number"
+                          value={plans[0].price}
+                          onChange={(e) => {
+                            const newPlans = [...plans];
+                            newPlans[0] = { ...newPlans[0], price: parseInt(e.target.value) || 0 };
+                            setPlans(newPlans);
+                          }}
+                          className="font-mono"
+                          placeholder="50000"
+                        />
+                        <Button 
+                          onClick={async () => {
+                            const { error } = await supabase
+                              .from('plans')
+                              .update({ price: plans[0].price })
+                              .eq('id', plans[0].id);
+                            if (error) {
+                              toast({ title: 'Error', description: 'Failed to update price', variant: 'destructive' });
+                            } else {
+                              toast({ title: 'Updated!', description: 'Panel price updated successfully' });
+                            }
+                          }}
+                          className="bg-primary hover:bg-primary/90"
+                        >
+                          Save
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        = ₦{(plans[0].price / 100).toLocaleString()} per panel per month
+                      </p>
+                      <div className="mt-4 p-3 rounded bg-card border border-border">
+                        <p className="text-xs text-muted-foreground font-mono">Example calculations:</p>
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                          <span className="text-muted-foreground">1 panel × 1 month:</span>
+                          <span className="font-mono text-foreground">₦{(plans[0].price / 100).toLocaleString()}</span>
+                          <span className="text-muted-foreground">2 panels × 3 months:</span>
+                          <span className="font-mono text-foreground">₦{(plans[0].price * 2 * 3 / 100).toLocaleString()}</span>
+                          <span className="text-muted-foreground">5 panels × 6 months:</span>
+                          <span className="font-mono text-foreground">₦{(plans[0].price * 5 * 6 / 100).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Ban/Unban Dialog */}
+      <AlertDialog open={!!actionUser} onOpenChange={() => setActionUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-foreground">
+              {actionType === 'ban' ? 'Ban User?' : 'Unban User?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {actionType === 'ban'
+                ? `This will ban ${actionUser?.email} and stop all their running panels.`
+                : `This will restore ${actionUser?.email}'s access to their account.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBanUser}
+              className={actionType === 'ban' ? 'bg-destructive text-destructive-foreground' : ''}
+            >
+              {actionType === 'ban' ? 'Ban User' : 'Unban User'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* View User Panels Dialog */}
+      <Dialog open={!!viewingUser} onOpenChange={() => setViewingUser(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Server className="w-5 h-5 text-primary" />
+              {viewingUser?.username || viewingUser?.email}'s Panels
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            {loadingPanels ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : userPanels.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No panels found</p>
+            ) : (
+              userPanels.map((panel) => (
+                <Card key={panel.id}>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-mono font-medium text-foreground">{panel.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {panel.language} • {panel.status}
+                        </p>
+                      </div>
+                      <Badge variant={panel.status === 'running' ? 'default' : 'secondary'}>
+                        {panel.status}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate Redeem Code Dialog */}
+      <RedeemCodeDialog
+        open={showRedeemDialog}
+        onOpenChange={setShowRedeemDialog}
+        onCreated={fetchData}
+      />
+
+      {/* Add Panels Dialog */}
+      <AlertDialog open={!!addPanelsUser} onOpenChange={() => setAddPanelsUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-primary" />
+              Add Panel Slots
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Add panel slots to {addPanelsUser?.email}. Current limit: {addPanelsUser?.panels_limit || 0}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium text-foreground">Number of panels to add</label>
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              value={panelsToAdd}
+              onChange={(e) => setPanelsToAdd(e.target.value)}
+              className="mt-2 font-mono"
+              placeholder="1"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              New limit will be: {(addPanelsUser?.panels_limit || 0) + (parseInt(panelsToAdd) || 0)}
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAddPanels}>
+              Add Panels
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+    </div>
+  );
+};
+
+export default Admin;
