@@ -161,13 +161,13 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
       suppressUntil.current = Date.now() + 8000;
       setRunning(true);
 
+      push('cmd', `→ ${trimmed}`);
       const escapedInput = trimmed.replace(/"/g, '\\"');
       const runners = language === 'python' ? ['python3', 'python'] : ['node'];
       let succeeded = false;
 
       for (const r of runners) {
         const pipedCmd = `echo "${escapedInput}" | ${r} ${entryPoint}`;
-        push('info', `→ ${pipedCmd}`);
         try {
           const res = await vmApi.exec(panelId, pipedCmd);
           const out = ((res.stdout || '') + (res.stderr ? '\n' + res.stderr : '')).trim();
