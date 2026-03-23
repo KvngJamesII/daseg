@@ -21,6 +21,8 @@ import {
   Clock,
   RotateCcw,
   ShoppingCart,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { FileManager } from '@/components/panel/FileManager';
 import { UnifiedConsole } from '@/components/panel/UnifiedConsole';
@@ -83,6 +85,7 @@ const PanelPage = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStopDialog, setShowStopDialog] = useState(false);
   const [liveUptime, setLiveUptime] = useState<number>(0);
+  const [consoleExpanded, setConsoleExpanded] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -465,6 +468,29 @@ const PanelPage = () => {
         </div>
       )}
 
+      {/* ── Full-screen console overlay ─────────────────────────────────── */}
+      {consoleExpanded && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', flexDirection: 'column', background: '#0d1117' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', height: 44, borderBottom: '1px solid #21262d', background: '#161b22', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Terminal style={{ width: 14, height: 14, color: '#3fb950' }} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#e6edf3' }}>{panel.name}</span>
+              <span style={{ fontSize: 11, color: '#6b7280' }}>— console</span>
+            </div>
+            <button
+              onClick={() => setConsoleExpanded(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #30363d', background: 'transparent', color: '#8b949e', cursor: 'pointer', fontSize: 12 }}
+            >
+              <Minimize2 style={{ width: 12, height: 12 }} />
+              Collapse
+            </button>
+          </div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <UnifiedConsole panelId={panel.id} panelStatus={effectiveStatus} />
+          </div>
+        </div>
+      )}
+
       {/* ── Tabs ────────────────────────────────────────────────────────── */}
       <Tabs defaultValue="console" className="flex-1 flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b border-border bg-card/40 h-auto p-0 overflow-x-auto shrink-0">
@@ -481,6 +507,16 @@ const PanelPage = () => {
             >
               <Icon className="w-3.5 h-3.5" />
               {label}
+              {value === 'console' && (
+                <span
+                  role="button"
+                  onClick={e => { e.stopPropagation(); setConsoleExpanded(true); }}
+                  className="ml-0.5 opacity-40 hover:opacity-80 transition-opacity"
+                  title="Expand console"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                </span>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>
