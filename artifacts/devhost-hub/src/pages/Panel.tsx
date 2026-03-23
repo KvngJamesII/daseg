@@ -99,11 +99,6 @@ const PanelPage = () => {
   useEffect(() => { if (!authLoading && !user) navigate('/auth'); }, [user, authLoading]);
   useEffect(() => { if (id && user) fetchPanel(); }, [id, user]);
 
-  const decrementPanelSlot = async () => {
-    const { data: prof } = await supabase.from('profiles').select('panels_limit').eq('id', user?.id).single();
-    if (prof && prof.panels_limit > 0)
-      await supabase.from('profiles').update({ panels_limit: prof.panels_limit - 1 }).eq('id', user?.id);
-  };
 
   const fetchPanel = async () => {
     const { data, error } = await supabase.from('panels').select('*').eq('id', id).eq('user_id', user?.id).single();
@@ -117,7 +112,6 @@ const PanelPage = () => {
         if (expiresAt < Date.now() - 7 * 24 * 60 * 60 * 1000) {
           try { await vmApi.delete(p.id); } catch {}
           await supabase.from('panels').delete().eq('id', p.id);
-          await decrementPanelSlot();
           toast({ title: 'Panel Removed', description: `"${p.name}" expired over 7 days ago and has been auto-deleted.`, variant: 'destructive' });
           navigate('/dashboard'); return;
         }
@@ -214,8 +208,7 @@ const PanelPage = () => {
     if (error) {
       toast({ title: 'Error', description: 'Failed to delete panel', variant: 'destructive' });
     } else {
-      await decrementPanelSlot();
-      toast({ title: 'Panel deleted', description: 'The panel and its slot have been permanently removed.' });
+      toast({ title: 'Panel deleted', description: 'The panel has been permanently removed.' });
       navigate('/dashboard');
     }
   };

@@ -287,7 +287,15 @@ const Pricing = () => {
         throw new Error(data.error || 'Failed to initialize payment');
       }
     } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+      let msg = e.message || 'Payment could not be started.';
+      // FunctionsHttpError carries the raw response — try to read the actual reason
+      if (e.context?.json) {
+        try {
+          const body = await e.context.json();
+          msg = body.error || body.message || msg;
+        } catch {}
+      }
+      toast({ title: 'Payment Error', description: msg, variant: 'destructive' });
       setPurchasing(null);
     }
   };
