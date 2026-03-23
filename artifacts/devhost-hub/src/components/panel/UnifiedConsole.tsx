@@ -110,11 +110,11 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
   }, [panelId]);
 
   /* ── App logs (PM2) ── */
-  const fetchLogs = async () => {
+  const fetchLogs = async (force = false) => {
     // Suppress fetches for a window after a stdin exec to avoid
     // PM2 restart output appearing as duplicates
-    if (Date.now() < suppressUntil.current) return;
-    if (panelStatus !== 'running') return;
+    if (!force && Date.now() < suppressUntil.current) return;
+    if (!force && panelStatus !== 'running') return;
     setLoading(true);
     try {
       const res = await vmApi.getLogs(panelId, 150);
@@ -165,11 +165,25 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
         fetchLogs();
       }
     } else {
+      const wasRunning = prevStatus.current === 'running';
       prevStatus.current = panelStatus;
-      setLines(prev => {
-        const sysLines = prev.filter(l => l.kind === 'sys' || l.kind === 'info');
-        return [...sysLines, { id: 'idle', kind: 'sys', text: '[SYSTEM] Panel is not running. Press Start to launch your app.', ts: Date.now() }];
-      });
+
+      if (wasRunning) {
+        // Panel just stopped — do a final forced log grab to capture fast-exit output
+        // (e.g. a script that prints and exits before the 2s poller fires)
+        fetchLogs(true).then(() => {
+          setLines(prev => {
+            // Avoid duplicate idle messages
+            if (prev.some(l => l.id === 'idle')) return prev;
+            return [...prev, { id: 'idle', kind: 'sys', text: '[SYSTEM] Panel is not running. Press Start to launch your app.', ts: Date.now() }];
+          });
+        });
+      } else {
+        setLines(prev => {
+          const sysLines = prev.filter(l => l.kind === 'sys' || l.kind === 'info');
+          return [...sysLines, { id: 'idle', kind: 'sys', text: '[SYSTEM] Panel is not running. Press Start to launch your app.', ts: Date.now() }];
+        });
+      }
     }
   }, [panelId, panelStatus]);
 
