@@ -75,20 +75,38 @@ export function InteractiveTerminal({ panelId }: Props) {
     lastRaw.current = '';
 
     // Step 1 — confirm tmux is reachable with a version check
-    const ver = await exec(panelId, 'tmux -V');
+    let ver = await exec(panelId, 'tmux -V');
+
+    // Not found — try to auto-install inside the container
     if (!ver.ok) {
-      setOutput([
-        '⚠  tmux not found or terminal:exec failed.',
-        '',
-        'Debug info: ' + (ver.out || '(no message)'),
-        '',
-        'If tmux is missing, SSH into your server and run:',
-        '  apt-get update && apt-get install -y tmux',
-        '',
-        'Then press Reconnect.',
-      ]);
-      setStatusLabel('error');
-      return;
+      setOutput(['tmux not found — installing inside container…']);
+      const install = await exec(panelId, 'apt-get install -y --no-install-recommends tmux');
+      if (!install.ok) {
+        setOutput([
+          '⚠  Could not install tmux automatically.',
+          'Debug: ' + (install.out || ver.out || '(no message)'),
+          '',
+          '── Try these steps ──────────────────────────',
+          '1. Make sure your panel is STARTED (not stopped)',
+          '2. Go to the Logs tab and run:',
+          '     apt-get install -y tmux',
+          '3. Come back here and press Reconnect',
+        ]);
+        setStatusLabel('error');
+        return;
+      }
+      // retry after install
+      ver = await exec(panelId, 'tmux -V');
+      if (!ver.ok) {
+        setOutput([
+          '⚠  Installed tmux but still cannot run it.',
+          'Debug: ' + (ver.out || '(no message)'),
+          '',
+          'Press Reconnect to try again.',
+        ]);
+        setStatusLabel('error');
+        return;
+      }
     }
 
     setOutput(['tmux ' + ver.out + ' — creating session…']);
