@@ -27,6 +27,29 @@ const cleanRaw = (s: string) =>
 const isNoise = (s: string) =>
   !s || /\[tailing\]|\.pm2\/logs\/|last \d+ lines/i.test(s);
 
+// Remove full KeyboardInterrupt traceback blocks — these appear when PM2
+// kills a Python process that's waiting on input() and are not real errors.
+function stripKeyboardInterrupt(lines: Line[]): Line[] {
+  const arr = [...lines];
+  let i = arr.length - 1;
+  while (i >= 0) {
+    if (arr[i].text.trim() === 'KeyboardInterrupt') {
+      let start = i;
+      for (let j = i - 1; j >= Math.max(0, i - 12); j--) {
+        if (/Traceback \(most recent call last\)/i.test(arr[j].text)) {
+          start = j;
+          break;
+        }
+      }
+      arr.splice(start, i - start + 1);
+      i = start - 1;
+    } else {
+      i--;
+    }
+  }
+  return arr;
+}
+
 const lineColor = (k: Line['kind']) => ({
   log:  '#d1d5db',
   cmd:  '#34d399',
@@ -104,10 +127,12 @@ export function UnifiedConsole({ panelId, panelStatus, entryPoint = 'main.py', l
           out.push({ id: `err-${now}-${Math.random()}`, kind: k, text, ts: now });
         });
       }
+      // Strip KeyboardInterrupt traceback blocks (expected PM2 kill noise)
+      const cleaned = stripKeyboardInterrupt(out);
       setLines(prev => {
         const sysLines = prev.filter(l => l.kind === 'sys' || l.kind === 'info');
         const cmdLines = prev.filter(l => l.kind === 'cmd' || l.kind === 'out' || l.kind === 'err' && l.id.startsWith('cmd-'));
-        return [...sysLines, ...out, ...cmdLines].sort((a, b) => a.ts - b.ts);
+        return [...sysLines, ...cleaned, ...cmdLines].sort((a, b) => a.ts - b.ts);
       });
     } catch { }
     setLoading(false);
