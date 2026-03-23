@@ -190,6 +190,7 @@ const Admin = () => {
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
   const [planEdits, setPlanEdits] = useState<Record<string, Partial<Plan>>>({});
   const [savingPlan, setSavingPlan] = useState<string | null>(null);
+  const [syncingPlans, setSyncingPlans] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -466,6 +467,35 @@ const Admin = () => {
 
   const updatePlanEdit = (planId: string, field: keyof Plan, value: any) => {
     setPlanEdits(prev => ({ ...prev, [planId]: { ...prev[planId], [field]: value } }));
+  };
+
+  const PLAN_SEEDS = [
+    { name: 'Starter',  price: 140000, panels_count: 1, duration_days: 30, is_active: true, is_popular: false, sort_order: 1, ram_mb: 512,  cpu_cores: 0.5, storage_mb: 1024, description: 'Run a small bot or script',     features: ['Node.js & Python support','Auto-restart on crash','Web file manager','Console & live logs','24/7 uptime monitoring'] },
+    { name: 'Basic',    price: 250000, panels_count: 1, duration_days: 30, is_active: true, is_popular: true,  sort_order: 2, ram_mb: 1024, cpu_cores: 1.0, storage_mb: 2048, description: 'Discord bots & simple APIs',    features: ['Everything in Starter','Double the RAM (1 GB)','2× CPU performance','2 GB file storage','Priority activation'] },
+    { name: 'Standard', price: 420000, panels_count: 1, duration_days: 30, is_active: true, is_popular: false, sort_order: 3, ram_mb: 1536, cpu_cores: 1.5, storage_mb: 3072, description: 'Multi-feature apps & scrapers', features: ['Everything in Basic','1.5 GB RAM','1.5 CPU cores','3 GB file storage','Higher restart tolerance'] },
+    { name: 'Pro',      price: 650000, panels_count: 1, duration_days: 30, is_active: true, is_popular: false, sort_order: 4, ram_mb: 2048, cpu_cores: 2.0, storage_mb: 4096, description: 'Heavy workloads & ML scripts',   features: ['Everything in Standard','Max 2 GB RAM','2 full CPU cores','4 GB storage','Highest restart limit'] },
+  ];
+
+  const syncPlans = async () => {
+    setSyncingPlans(true);
+    let errors = 0;
+    for (const seed of PLAN_SEEDS) {
+      const { data: existing } = await supabase.from('plans').select('id').ilike('name', seed.name).maybeSingle();
+      if (existing?.id) {
+        const { error } = await supabase.from('plans').update({ ...seed, updated_at: new Date().toISOString() }).eq('id', existing.id);
+        if (error) errors++;
+      } else {
+        const { error } = await supabase.from('plans').insert(seed);
+        if (error) errors++;
+      }
+    }
+    if (errors === 0) {
+      toast({ title: 'Plans Synced', description: 'All 4 plans updated to match current pricing config.' });
+    } else {
+      toast({ title: 'Partial Sync', description: `${errors} plan(s) failed — the new columns (ram_mb, cpu_cores, storage_mb) may not exist yet. Run the migration SQL first.`, variant: 'destructive' });
+    }
+    fetchData();
+    setSyncingPlans(false);
   };
 
   const filteredUsers = users.filter(u =>
@@ -749,7 +779,19 @@ const Admin = () => {
         {/* ── PLANS TAB ── */}
         {activeTab === 'plans' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ fontSize: 12, color: MUTED }}>Edit pricing plans. Changes apply immediately to new purchases.</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ fontSize: 12, color: MUTED }}>Edit pricing plans. Changes apply immediately to new purchases.</div>
+              <button
+                onClick={syncPlans}
+                disabled={syncingPlans}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9, background: `${CYAN}15`, border: `1.5px solid ${CYAN}40`, color: CYAN, fontWeight: 700, fontSize: 12, fontFamily: 'monospace', cursor: 'pointer', flexShrink: 0, opacity: syncingPlans ? 0.6 : 1 }}
+              >
+                {syncingPlans
+                  ? <><Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> Syncing…</>
+                  : <><RefreshCw style={{ width: 13, height: 13 }} /> Sync Plans</>
+                }
+              </button>
+            </div>
             {plans.map(plan => {
               const isEditing = editingPlan === plan.id;
               const edits = planEdits[plan.id] || plan;

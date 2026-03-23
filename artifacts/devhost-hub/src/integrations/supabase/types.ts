@@ -158,6 +158,7 @@ export type Database = {
       plans: {
         Row: {
           created_at: string
+          cpu_cores: number
           description: string | null
           duration_days: number
           features: string[] | null
@@ -167,11 +168,14 @@ export type Database = {
           name: string
           panels_count: number
           price: number
+          ram_mb: number
           sort_order: number
+          storage_mb: number
           updated_at: string
         }
         Insert: {
           created_at?: string
+          cpu_cores?: number
           description?: string | null
           duration_days?: number
           features?: string[] | null
@@ -181,11 +185,14 @@ export type Database = {
           name: string
           panels_count?: number
           price: number
+          ram_mb?: number
           sort_order?: number
+          storage_mb?: number
           updated_at?: string
         }
         Update: {
           created_at?: string
+          cpu_cores?: number
           description?: string | null
           duration_days?: number
           features?: string[] | null
@@ -195,7 +202,9 @@ export type Database = {
           name?: string
           panels_count?: number
           price?: number
+          ram_mb?: number
           sort_order?: number
+          storage_mb?: number
           updated_at?: string
         }
         Relationships: []

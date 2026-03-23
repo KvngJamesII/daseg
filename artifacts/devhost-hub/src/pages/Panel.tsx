@@ -406,27 +406,25 @@ const PanelPage = () => {
               language={panel.language}
             />
 
-            {/* Metric cards — only when running, inside the console tab */}
-            {vmStatus && isRunning && (
-              <div style={{ padding: '10px 14px 12px', borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
-                {recentRestarts > 7 && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 10px', borderRadius: 9, background: `${AMBER}12`, border: `1px solid ${AMBER}25`, marginBottom: 8 }}>
-                    <AlertCircle style={{ width: 12, height: 12, color: AMBER, flexShrink: 0, marginTop: 1 }} />
-                    <p style={{ fontSize: 10.5, color: AMBER, margin: 0 }}><strong>{recentRestarts}/10 restarts</strong> in the last 3 hours — auto-stop triggers at 10.</p>
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <MetCard label="CPU"      value={`${vmStatus.cpu?.toFixed(1) ?? 0}%`} sub="of vCPU"   color={BLUE}  pct={vmStatus.cpu ?? 0}                   icon={Cpu} />
-                    <MetCard label="RAM"      value={`${memMB.toFixed(0)} MB`}             sub="of 512 MB" color={GREEN} pct={(memMB / 512) * 100}                  icon={MemoryStick} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <MetCard label="Uptime"   value={formatUptime(liveUptime)}             sub="running"   color={GREEN} pct={100}                                  icon={Clock} />
-                    <MetCard label="Restarts" value={String(vmStatus.restarts ?? 0)}       sub="total"     color={recentRestarts > 5 ? AMBER : BLUE} pct={(recentRestarts / 10) * 100} icon={RotateCcw} />
-                  </div>
+            {/* Metric cards — always visible, live data when running */}
+            <div style={{ padding: '10px 14px 12px', borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
+              {isRunning && recentRestarts > 7 && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 10px', borderRadius: 9, background: `${AMBER}12`, border: `1px solid ${AMBER}25`, marginBottom: 8 }}>
+                  <AlertCircle style={{ width: 12, height: 12, color: AMBER, flexShrink: 0, marginTop: 1 }} />
+                  <p style={{ fontSize: 10.5, color: AMBER, margin: 0 }}><strong>{recentRestarts}/10 restarts</strong> in the last 3 hours — auto-stop triggers at 10.</p>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, opacity: isRunning ? 1 : 0.45 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <MetCard label="CPU"      value={isRunning ? `${vmStatus?.cpu?.toFixed(1) ?? 0}%` : '—'}     sub="of vCPU"   color={BLUE}  pct={isRunning ? (vmStatus?.cpu ?? 0) : 0}                         icon={Cpu} />
+                  <MetCard label="RAM"      value={isRunning ? `${memMB.toFixed(0)} MB` : '—'}                  sub="of 512 MB" color={GREEN} pct={isRunning ? (memMB / 512) * 100 : 0}                         icon={MemoryStick} />
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <MetCard label="Uptime"   value={isRunning ? formatUptime(liveUptime) : '—'}                  sub={isRunning ? 'running' : 'offline'}    color={GREEN} pct={isRunning ? 100 : 0}               icon={Clock} />
+                  <MetCard label="Restarts" value={isRunning ? String(vmStatus?.restarts ?? 0) : '—'}           sub="total"     color={recentRestarts > 5 ? AMBER : BLUE} pct={(recentRestarts / 10) * 100}  icon={RotateCcw} />
                 </div>
               </div>
-            )}
+            </div>
           </div>
         )}
 
