@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "EHqOO02iXBAf4WvYVszRk"
+uri = "file://new-platform-prompt.md"
+type = "text"
+title = "New VPS Platform — Build Prompt"
