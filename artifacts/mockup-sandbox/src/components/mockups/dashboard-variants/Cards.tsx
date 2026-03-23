@@ -41,7 +41,7 @@ export function Cards() {
               <div style={{ width: 32, height: 32, background: "#6366f120", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}><Server size={15} color="#6366f1" /></div>
               <span style={{ fontSize: 10, color: "#475569", fontWeight: 600, letterSpacing: "0.05em" }}>PANELS</span>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: "#fff", lineHeight: 1 }}>3<span style={{ fontSize: 14, color: "#475569", fontWeight: 400" }}>/5</span></div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#fff", lineHeight: 1 }}>3<span style={{ fontSize: 14, color: "#475569", fontWeight: 400 }}>/5</span></div>
             <div style={{ marginTop: 8, height: 3, background: "#2a2d38", borderRadius: 3 }}>
               <div style={{ width: "60%", height: "100%", background: "linear-gradient(90deg,#6366f1,#8b5cf6)", borderRadius: 3 }} />
             </div>
